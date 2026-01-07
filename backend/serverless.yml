@@ -1,0 +1,84 @@
+service: portfolioview-api
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${env:AWS_REGION, 'ap-south-1'}
+  stage: ${opt:stage, 'prod'}
+  memorySize: 512
+  timeout: 30
+  
+  # Load .env.production file
+  useDotenv: true
+  
+  # Environment variables for Lambda
+  environment:
+    NODE_ENV: production
+    COGNITO_REGION: ${env:COGNITO_REGION, 'ap-south-1'}
+    CLIENT_APP_CLIENT_ID: ${env:CLIENT_APP_CLIENT_ID}
+    INTERNAL_APP_CLIENT_ID: ${env:INTERNAL_APP_CLIENT_ID}
+    FRONTEND_URL: ${env:FRONTEND_URL}
+    USE_LOCAL_AUTH: false
+  
+  # IAM Permissions (if you need to access other AWS services later)
+  iamRoleStatements:
+    - Effect: Allow
+      Action:
+        - logs:CreateLogGroup
+        - logs:CreateLogStream
+        - logs:PutLogEvents
+      Resource: "arn:aws:logs:*:*:*"
+
+# Package configuration
+package:
+  individually: false
+  exclude:
+    - node_modules/**
+    - .git/**
+    - .env
+    - README.md
+    - database/**
+    - scripts/**
+    - .gitignore
+  include:
+    - controllers/**
+    - middleware/**
+    - routes/**
+    - services/**
+    - app.js
+    - lambda.js
+    - package.json
+
+functions:
+  # Main API function
+  api:
+    handler: lambda.handler
+    events:
+      - http:
+          path: /{proxy+}
+          method: ANY
+          cors:
+            origin: ${env:FRONTEND_URL}
+            headers:
+              - Content-Type
+              - Authorization
+            allowCredentials: true
+      - http:
+          path: /
+          method: ANY
+          cors:
+            origin: ${env:FRONTEND_URL}
+            headers:
+              - Content-Type
+              - Authorization
+            allowCredentials: true
+
+# Plugins
+plugins:
+  - serverless-offline
+
+# Custom configuration
+custom:
+  serverless-offline:
+    httpPort: 5000
+    httpsPort: 5001
