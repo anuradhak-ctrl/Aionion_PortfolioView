@@ -1,0 +1,134 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Light Theme Palette */
+  --background: 0 0% 100%;
+  /* White */
+  --foreground: 222 47% 11%;
+  /* Dark Navy */
+
+  --card: 0 0% 98%;
+  /* Very light gray */
+  --card-foreground: 222 47% 11%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+
+  --primary: 230 100% 50%;
+  /* #0023ff - Your primary color */
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 220 14% 96%;
+  /* Light gray */
+  --secondary-foreground: 222 47% 11%;
+
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+
+  --accent: 230 100% 95%;
+  /* Light blue accent */
+  --accent-foreground: 230 100% 50%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 14% 91%;
+  --input: 220 14% 91%;
+  --ring: 230 100% 50%;
+
+  --radius: 0.75rem;
+
+  --font-sans: 'Inter', sans-serif;
+  --font-display: 'DM Sans', sans-serif;
+}
+
+.dark {
+  /* Dark Theme Palette */
+  --background: 222 47% 11%;
+  /* Deep Navy #0f172a */
+  --foreground: 210 40% 98%;
+  /* White-ish */
+
+  --card: 223 47% 14%;
+  /* Slightly lighter navy */
+  --card-foreground: 210 40% 98%;
+
+  --popover: 223 47% 14%;
+  --popover-foreground: 210 40% 98%;
+
+  /* Emerald Green for Dark Mode */
+  --primary: 158 64% 52%;
+  /* #34d399 */
+  --primary-foreground: 160 50% 5%;
+
+  --secondary: 217 33% 17%;
+  /* Slate 800 */
+  --secondary-foreground: 210 40% 98%;
+
+  --muted: 217 33% 20%;
+  --muted-foreground: 215 20% 65%;
+
+  --accent: 158 64% 52%;
+  /* Emerald Green Accent */
+  --accent-foreground: 160 50% 5%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 210 40% 98%;
+
+  --border: 217 33% 20%;
+  --input: 217 33% 20%;
+  --ring: 158 64% 52%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased font-sans selection:bg-primary/30 selection:text-primary-foreground transition-colors duration-300;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    @apply font-display tracking-tight;
+  }
+}
+
+/* Custom Utilities for Glassmorphism */
+@layer utilities {
+  .glass-card {
+    @apply bg-card/80 backdrop-blur-md border border-border/50 shadow-xl;
+  }
+
+  .glass-panel {
+    @apply bg-card/50 backdrop-blur-sm border border-border/50;
+  }
+
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-foreground to-foreground/70;
+  }
+
+  .text-gradient-primary {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-primary to-blue-400 dark:from-sky-400 dark:to-cyan-400;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    /* IE and Edge */
+    scrollbar-width: none;
+    /* Firefox */
+  }
+}
