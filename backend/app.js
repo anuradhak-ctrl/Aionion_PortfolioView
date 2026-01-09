@@ -6,6 +6,7 @@ dotenv.config();
 
 // Import routes
 import userRoutes from './routes/user.routes.js';
+import localAuthRoutes from './routes/local-auth.routes.js';
 
 // Initialize express app
 const app = express();
@@ -31,40 +32,34 @@ app.use((req, res, next) => {
 
 // Health check route
 app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'Server is running',
-    auth: 'AWS Cognito USER_PASSWORD_AUTH',
-    note: 'Custom login via backend (no Hosted UI)'
+    auth: 'Local Development Auth (Dummy Users)',
+    note: 'Using test accounts - Cognito disabled'
   });
 });
 
 // API routes
 app.use('/api/users', userRoutes);
 
-// Cognito authentication routes (production)
-import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
-app.use('/api/auth', cognitoAuthRoutes);
-console.log('🔐 Cognito authentication enabled');
+// Cognito authentication routes (production) - DISABLED FOR LOCAL DEVELOPMENT
+// import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
+// app.use('/api/auth', cognitoAuthRoutes);
+// console.log('🔐 Cognito authentication enabled');
 
-// Local development auth (dummy users) - can coexist
+// Local development auth (dummy users)
 if (process.env.USE_LOCAL_AUTH === 'true') {
-  import('./routes/local-auth.routes.js')
-    .then(module => {
-      app.use('/api/local-auth', module.default);
-      console.log('🔓 Local auth enabled - using dummy users');
-      console.log('📧 Test accounts: client@test.com, rm@test.com, bm@test.com, etc.');
-      console.log('🔑 Password for all: test123');
-    })
-    .catch(err => {
-      console.error('Failed to load local auth routes:', err);
-    });
+  app.use('/api/local-auth', localAuthRoutes);
+  console.log('🔓 Local auth enabled - using dummy users');
+  console.log('📧 Test accounts: client@test.com, rm@test.com, bm@test.com, etc.');
+  console.log('🔑 Password for all: test123');
 }
 
 // Also mount routes at /prod for API Gateway
 app.get('/prod/health', (req, res) => {
-  res.json({ 
-    status: 'OK', 
+  res.json({
+    status: 'OK',
     message: 'Server is running',
     auth: 'AWS Cognito USER_PASSWORD_AUTH',
     note: 'Custom login via backend (no Hosted UI)'
@@ -72,7 +67,7 @@ app.get('/prod/health', (req, res) => {
 });
 
 app.use('/prod/api/users', userRoutes);
-app.use('/prod/api/auth', cognitoAuthRoutes);
+// app.use('/prod/api/auth', cognitoAuthRoutes); // DISABLED FOR LOCAL DEVELOPMENT
 
 // 404 handler
 app.use((req, res) => {
@@ -82,7 +77,7 @@ app.use((req, res) => {
 // Error handling middleware
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  res.status(err.status || 500).json({ 
+  res.status(err.status || 500).json({
     message: err.message || 'Internal server error',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
