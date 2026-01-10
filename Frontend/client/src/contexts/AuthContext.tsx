@@ -28,19 +28,51 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const currentUser = authService.getCurrentUser();
-    if (currentUser) {
-      setUser(currentUser);
-    }
-    setIsLoading(false);
+    const validateAndRestoreAuth = async () => {
+      // Check if user is already logged in
+      const currentUser = authService.getCurrentUser();
+      const token = authService.getAccessToken();
+
+      if (currentUser && token) {
+        try {
+          // Check if token is expired by decoding JWT
+          const tokenParts = token.split('.');
+          if (tokenParts.length === 3) {
+            const payload = JSON.parse(atob(tokenParts[1]));
+            const expiration = payload.exp * 1000; // Convert to milliseconds
+
+            if (Date.now() >= expiration) {
+              console.warn('⚠️ Token expired, clearing auth state');
+              await authService.logout();
+              setUser(null);
+              setIsLoading(false);
+              return;
+            }
+          }
+
+          // Token not expired, restore user
+          setUser(currentUser);
+        } catch (error) {
+          // Token parsing error, clear auth
+          console.error('❌ Auth validation error:', error);
+          await authService.logout();
+          setUser(null);
+        }
+      }
+
+      setIsLoading(false);
+    };
+
+    validateAndRestoreAuth();
   }, []);
 
   const login = async (credentials: LoginCredentials) => {
     try {
       const response = await authService.login(credentials);
       console.log('🔍 Login response user:', response.user);
-      setUser(response.user);
+      if (response.user) {
+        setUser(response.user);
+      }
     } catch (error) {
       console.error('Login failed:', error);
       throw error;

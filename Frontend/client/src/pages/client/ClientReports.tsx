@@ -347,84 +347,42 @@ const LedgerTab = () => {
 const HoldingsTab = () => {
     const [filter, setFilter] = useState("All");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [holdings, setHoldings] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const holdings = [
-        {
-            symbol: "INFY",
-            isin: "INE009A01021",
-            sector: "IT",
-            qtyAvailable: 100,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 80,
-            qtyPledgedMargin: 20,
-            qtyPledgedLoan: 0,
-            avgPrice: "1,250.00",
-            prevClosing: "1,540.00",
-            unrealizedPL: "34,800.00",
-            unrealizedPLPercent: "23.2",
-            type: "Equity"
-        },
-        {
-            symbol: "TCS",
-            isin: "INE467B01029",
-            sector: "IT",
-            qtyAvailable: 50,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 50,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "3,200.00",
-            prevClosing: "3,580.00",
-            unrealizedPL: "19,000.00",
-            unrealizedPLPercent: "11.88",
-            type: "Equity"
-        },
-        {
-            symbol: "HDFCBANK",
-            isin: "INE040A01034",
-            sector: "Banking",
-            qtyAvailable: 200,
-            qtyDiscrepant: 10,
-            qtyLongTerm: 150,
-            qtyPledgedMargin: 40,
-            qtyPledgedLoan: 0,
-            avgPrice: "1,420.00",
-            prevClosing: "1,610.00",
-            unrealizedPL: "47,500.00",
-            unrealizedPLPercent: "13.38",
-            type: "Equity"
-        },
-        {
-            symbol: "AX123456",
-            isin: "INF846K01EW2",
-            sector: "Large Cap",
-            qtyAvailable: 1500,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 1500,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "42.50",
-            prevClosing: "48.20",
-            unrealizedPL: "8,550.00",
-            unrealizedPLPercent: "13.41",
-            type: "MF"
-        },
-        {
-            symbol: "GOI 7.26%",
-            isin: "IN0020180034",
-            sector: "Government",
-            qtyAvailable: 5,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 5,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "102.50",
-            prevClosing: "102.75",
-            unrealizedPL: "1,250.00",
-            unrealizedPLPercent: "0.24",
-            type: "Bond"
-        },
-    ];
+    useEffect(() => {
+        const fetchHoldings = async () => {
+            try {
+                const response = await getPortfolioData();
+                // Map the simple API data to the detailed structure required by this unique report
+                // or just use what we have.
+                // The API returns: { security, qty, avgPrice, cmp, value, pl, return, ... }
+                // We map to: { symbol, isin, sector, qtyAvailable, ..., avgPrice, prevClosing, unrealizedPL, unrealizedPLPercent, type }
+
+                const mappedData = (response.data || []).map((item: any) => ({
+                    symbol: item.security,
+                    isin: item.isin || "-",
+                    sector: item.sector || "-",
+                    qtyAvailable: item.qty,
+                    qtyDiscrepant: 0,
+                    qtyLongTerm: 0,
+                    qtyPledgedMargin: 0,
+                    qtyPledgedLoan: 0,
+                    avgPrice: item.avgPrice,
+                    prevClosing: item.prevClosing,
+                    unrealizedPL: item.pl,
+                    unrealizedPLPercent: item.return ? item.return.replace('%', '') : "0",
+                    type: "Equity" // Assuming mostly equity for now from this endpoint
+                }));
+                setHoldings(mappedData);
+            } catch (error) {
+                console.error("Failed to fetch holdings for report:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchHoldings();
+    }, []);
 
     const filteredHoldings = filter === "All"
         ? holdings
@@ -503,61 +461,65 @@ const HoldingsTab = () => {
                 </div>
             </div>
 
-            {/* Table Section - With Horizontal Scroll */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
-                    <thead>
-                        <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Symbol</th>
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">ISIN</th>
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Sector</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Available</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Discrepant</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Long Term</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Pledged (Margin)</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Pledged (Loan)</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Average Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Previous Closing Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unrealized P&L</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unrealized P&L %</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Asset</th>
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border text-sm">
-                        {filteredHoldings.map((h, i) => (
-                            <tr key={i} className="hover:bg-muted/30 transition-colors">
-                                <td className="py-5 px-6 text-foreground font-bold whitespace-nowrap">{h.symbol}</td>
-                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{h.isin}</td>
-                                <td className="py-5 px-6 text-muted-foreground font-medium whitespace-nowrap">{h.sector}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyAvailable}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyDiscrepant}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyLongTerm}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedMargin}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedLoan}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.avgPrice}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.prevClosing}</td>
-                                <td className="py-5 px-6 text-right text-emerald-500 font-bold text-base whitespace-nowrap">{h.unrealizedPL}</td>
-                                <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500">
-                                        {h.unrealizedPLPercent}%
-                                    </span>
-                                </td>
-                                <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
-                                        {h.type}
-                                    </span>
-                                </td>
-                            </tr>
-                        ))}
-                        {filteredHoldings.length === 0 && (
-                            <tr>
-                                <td colSpan={13} className="py-12 text-center text-muted-foreground">
-                                    No holdings found for {filter === "All" ? "all assets" : filter}.
-                                </td>
-                            </tr>
-                        )}
-                    </tbody>
-                </table>
+            {/* Table Section - With Fixed Height and Scroll */}
+            <div className="border border-border rounded-lg overflow-hidden">
+                <div className="overflow-x-auto">
+                    <div className="max-h-[600px] overflow-y-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="sticky top-0 z-10">
+                                <tr className="border-b border-border">
+                                    <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Symbol</th>
+                                    <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">ISIN</th>
+                                    <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Sector</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Quantity Available</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Quantity Discrepant</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Quantity Long Term</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Quantity Pledged (Margin)</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Quantity Pledged (Loan)</th>
+                                    <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Average Price</th>
+                                    <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Previous Closing Price</th>
+                                    <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Unrealized P&L</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Unrealized P&L %</th>
+                                    <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background">Asset</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-border text-sm">
+                                {filteredHoldings.map((h, i) => (
+                                    <tr key={i} className="hover:bg-muted/30 transition-colors">
+                                        <td className="py-5 px-6 text-foreground font-bold whitespace-nowrap">{h.symbol}</td>
+                                        <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{h.isin}</td>
+                                        <td className="py-5 px-6 text-muted-foreground font-medium whitespace-nowrap">{h.sector}</td>
+                                        <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyAvailable}</td>
+                                        <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyDiscrepant}</td>
+                                        <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyLongTerm}</td>
+                                        <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedMargin}</td>
+                                        <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedLoan}</td>
+                                        <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.avgPrice}</td>
+                                        <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.prevClosing}</td>
+                                        <td className="py-5 px-6 text-right text-emerald-500 font-bold text-base whitespace-nowrap">{h.unrealizedPL}</td>
+                                        <td className="py-5 px-6 text-center whitespace-nowrap">
+                                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500">
+                                                {h.unrealizedPLPercent}%
+                                            </span>
+                                        </td>
+                                        <td className="py-5 px-6 text-center whitespace-nowrap">
+                                            <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
+                                                {h.type}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                                {filteredHoldings.length === 0 && (
+                                    <tr>
+                                        <td colSpan={13} className="py-12 text-center text-muted-foreground">
+                                            No holdings found for {filter === "All" ? "all assets" : filter}.
+                                        </td>
+                                    </tr>
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     );

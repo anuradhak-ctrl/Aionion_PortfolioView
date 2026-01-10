@@ -138,7 +138,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
         </div>
       </div>
 
-      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
+      <nav className="p-4 space-y-2">
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (
@@ -161,6 +161,9 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
           );
         })}
       </nav>
+
+      {/* Spacer to push profile section to bottom */}
+      <div className="flex-1"></div>
 
       <div className="p-4 border-t border-border/50">
         <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors cursor-pointer mb-2">
@@ -185,7 +188,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 flex-col shrink-0 min-h-screen bg-white dark:bg-[#1e293b] border-r border-border/50 z-30 transition-colors duration-300">
+      <aside className="hidden lg:flex w-72 flex-col shrink-0 h-screen sticky top-0 bg-white dark:bg-[#1e293b] border-r border-border/50 z-30 transition-colors duration-300">
         <NavContent />
       </aside>
 
