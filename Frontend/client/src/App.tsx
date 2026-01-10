@@ -24,6 +24,7 @@ import RMHoldings from "@/pages/rm/RMHoldings";
 import RMReports from "@/pages/rm/RMReports";
 import RMInsights from "@/pages/rm/RMInsights";
 import RMClients from "@/pages/rm/RMClients";
+import RMProfile from "@/pages/rm/RMProfile";
 
 // BM pages
 import BMHoldings from "@/pages/bm/BMHoldings";
@@ -31,6 +32,7 @@ import BMReports from "@/pages/bm/BMReports";
 import BMInsights from "@/pages/bm/BMInsights";
 import BMClients from "@/pages/bm/BMClients";
 import BMBranches from "@/pages/bm/BMBranches";
+import BMProfile from "@/pages/bm/BMProfile";
 
 // ZM pages
 import ZMHoldings from "@/pages/zm/ZMHoldings";
@@ -38,8 +40,8 @@ import ZMReports from "@/pages/zm/ZMReports";
 import ZMInsights from "@/pages/zm/ZMInsights";
 import ZMClients from "@/pages/zm/ZMClients";
 import ZMBranches from "@/pages/zm/ZMBranches";
-// Correction: The instruction had `import ZMZones from "@/pages/zm/ZMZones";`. I will use that.
 import ZMZones from "@/pages/zm/ZMZones";
+import ZMProfile from "@/pages/zm/ZMProfile";
 
 // Admin pages
 import AdminHoldings from "@/pages/admin/AdminHoldings";
@@ -50,6 +52,7 @@ import AdminBranches from "@/pages/admin/AdminBranches";
 import AdminZones from "@/pages/admin/AdminZones";
 import AdminAnalytics from "@/pages/admin/AdminAnalytics";
 import AdminAdministration from "@/pages/admin/AdminAdministration";
+import AdminProfile from "@/pages/admin/AdminProfile";
 
 function Redirect({ to }: { to?: string }) {
   const [, setLocation] = useLocation();
@@ -164,6 +167,11 @@ function Router() {
           <RMClients />
         </ProtectedRoute>
       </Route>
+      <Route path="/rm/profile">
+        <ProtectedRoute>
+          <RMProfile />
+        </ProtectedRoute>
+      </Route>
 
       {/* BM Routes */}
       <Route path="/bm/holdings">
@@ -189,6 +197,11 @@ function Router() {
       <Route path="/bm/branches">
         <ProtectedRoute>
           <BMBranches />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/bm/profile">
+        <ProtectedRoute>
+          <BMProfile />
         </ProtectedRoute>
       </Route>
 
@@ -221,6 +234,11 @@ function Router() {
       <Route path="/zm/zones">
         <ProtectedRoute>
           <ZMZones />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/zm/profile">
+        <ProtectedRoute>
+          <ZMProfile />
         </ProtectedRoute>
       </Route>
 
@@ -263,6 +281,11 @@ function Router() {
       <Route path="/admin/administration">
         <ProtectedRoute>
           <AdminAdministration />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/profile">
+        <ProtectedRoute>
+          <AdminProfile />
         </ProtectedRoute>
       </Route>
 
