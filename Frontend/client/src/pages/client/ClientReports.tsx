@@ -1,6 +1,7 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getPortfolioData } from "@/services/portfolioService";
 
 // --- Types ---
 type Tab = "Holdings" | "Transactions" | "Ledger" | "Dividends" | "Tax P&L" | "Capital Gains" | "XIRR";
@@ -202,84 +203,42 @@ const LedgerTab = () => {
 const HoldingsTab = () => {
     const [filter, setFilter] = useState("All");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [holdings, setHoldings] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const holdings = [
-        {
-            symbol: "INFY",
-            isin: "INE009A01021",
-            sector: "IT",
-            qtyAvailable: 100,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 80,
-            qtyPledgedMargin: 20,
-            qtyPledgedLoan: 0,
-            avgPrice: "1,250.00",
-            prevClosing: "1,540.00",
-            unrealizedPL: "34,800.00",
-            unrealizedPLPercent: "23.2",
-            type: "Equity"
-        },
-        {
-            symbol: "TCS",
-            isin: "INE467B01029",
-            sector: "IT",
-            qtyAvailable: 50,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 50,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "3,200.00",
-            prevClosing: "3,580.00",
-            unrealizedPL: "19,000.00",
-            unrealizedPLPercent: "11.88",
-            type: "Equity"
-        },
-        {
-            symbol: "HDFCBANK",
-            isin: "INE040A01034",
-            sector: "Banking",
-            qtyAvailable: 200,
-            qtyDiscrepant: 10,
-            qtyLongTerm: 150,
-            qtyPledgedMargin: 40,
-            qtyPledgedLoan: 0,
-            avgPrice: "1,420.00",
-            prevClosing: "1,610.00",
-            unrealizedPL: "47,500.00",
-            unrealizedPLPercent: "13.38",
-            type: "Equity"
-        },
-        {
-            symbol: "AX123456",
-            isin: "INF846K01EW2",
-            sector: "Large Cap",
-            qtyAvailable: 1500,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 1500,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "42.50",
-            prevClosing: "48.20",
-            unrealizedPL: "8,550.00",
-            unrealizedPLPercent: "13.41",
-            type: "MF"
-        },
-        {
-            symbol: "GOI 7.26%",
-            isin: "IN0020180034",
-            sector: "Government",
-            qtyAvailable: 5,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 5,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "102.50",
-            prevClosing: "102.75",
-            unrealizedPL: "1,250.00",
-            unrealizedPLPercent: "0.24",
-            type: "Bond"
-        },
-    ];
+    useEffect(() => {
+        const fetchHoldings = async () => {
+            try {
+                const response = await getPortfolioData();
+                // Map the simple API data to the detailed structure required by this unique report
+                // or just use what we have.
+                // The API returns: { security, qty, avgPrice, cmp, value, pl, return, ... }
+                // We map to: { symbol, isin, sector, qtyAvailable, ..., avgPrice, prevClosing, unrealizedPL, unrealizedPLPercent, type }
+
+                const mappedData = (response.data || []).map((item: any) => ({
+                    symbol: item.security,
+                    isin: item.isin || "-",
+                    sector: item.sector || "-",
+                    qtyAvailable: item.qty,
+                    qtyDiscrepant: 0,
+                    qtyLongTerm: 0,
+                    qtyPledgedMargin: 0,
+                    qtyPledgedLoan: 0,
+                    avgPrice: item.avgPrice,
+                    prevClosing: item.CPRate,
+                    unrealizedPL: item.pl,
+                    unrealizedPLPercent: item.return ? item.return.replace('%', '') : "0",
+                    type: "Equity" // Assuming mostly equity for now from this endpoint
+                }));
+                setHoldings(mappedData);
+            } catch (error) {
+                console.error("Failed to fetch holdings for report:", error);
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchHoldings();
+    }, []);
 
     const filteredHoldings = filter === "All"
         ? holdings

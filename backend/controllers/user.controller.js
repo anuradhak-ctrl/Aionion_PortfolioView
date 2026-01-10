@@ -1,6 +1,8 @@
 // controllers/user.controller.js
 // ES MODULE VERSION — FINAL
 
+import * as techexcelService from '../services/techexcel.service.js';
+
 // @desc Get current user info with dashboard and permissions
 export const getMe = (req, res) => {
   try {
@@ -113,7 +115,35 @@ export const getUserById = async (req, res) => {
       userId: id
     });
   } catch (err) {
-    console.error('getUserById error:', err);
     res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// @desc Get client portfolio (Client only)
+export const getClientPortfolio = async (req, res) => {
+  try {
+    // For now, assume username is the client code.
+    // In production, might need a generic way to map users to client codes.
+    // The username from Cognito is usually used.
+    const clientCode = req.user.username;
+    console.log('👤 Fetching portfolio for User:', req.user.username, 'Role:', req.user.role);
+
+    if (!clientCode) {
+      return res.status(400).json({ message: 'Client code not found for user' });
+    }
+
+    const portfolioData = await techexcelService.fetchClientPortfolio(clientCode);
+
+    res.json({
+      success: true,
+      clientCode,
+      data: portfolioData
+    });
+  } catch (err) {
+    console.error('getClientPortfolio error:', err);
+    res.status(500).json({
+      message: 'Failed to fetch portfolio data',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
   }
 };

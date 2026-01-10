@@ -1,89 +1,170 @@
 // services/auth.service.js
-// ES MODULE VERSION — FINAL
+// STEP 5.8 — Production-Ready JWT Verification with JWKS
 
 import jwt from 'jsonwebtoken';
-import jwkToPem from 'jwk-to-pem';
-import axios from 'axios';
+import jwksClient from 'jwks-rsa';
 
-// Cache for JWKs
-let clientJWKs = null;
-let internalJWKs = null;
-let jwkCacheTime = null;
-const JWK_CACHE_TTL = 60 * 60 * 1000; // 1 hour
+const region = process.env.COGNITO_REGION || 'ap-south-1';
+const userPoolId = process.env.COGNITO_USER_POOL_ID;
 
-async function getJWKs(userPoolId, region) {
-  const url = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}/.well-known/jwks.json`;
-  const response = await axios.get(url);
-  return response.data.keys;
+if (!userPoolId) {
+  console.warn('⚠️  COGNITO_USER_POOL_ID not set - JWT verification will fail in production');
 }
 
+// Initialize JWKS client (caches keys automatically)
+const client = jwksClient({
+  jwksUri: `https://cognito-idp.${region}.amazonaws.com/${userPoolId}/.well-known/jwks.json`,
+  cache: true,
+  cacheMaxAge: 3600000, // 1 hour
+  rateLimit: true,
+  jwksRequestsPerMinute: 10
+});
+
+/**
+ * Get signing key from JWKS
+ */
+function getKey(header, callback) {
+  client.getSigningKey(header.kid, (err, key) => {
+    if (err) {
+      callback(err);
+      return;
+    }
+    const signingKey = key.publicKey || key.rsaPublicKey;
+    callback(null, signingKey);
+  });
+}
+
+/**
+ * STEP 5.8 — Verify JWT Token
+ * 
+ * CRITICAL CHECKS:
+ * 1. Signature verification (JWKS)
+ * 2. Issuer validation
+ * 3. Audience validation
+ * 4. Expiry check
+ * 5. token_use validation
+ */
 export const verifyToken = async (token) => {
-  try {
+  return new Promise((resolve, reject) => {
+    // Decode header to get key id
     const decoded = jwt.decode(token, { complete: true });
-    if (!decoded) throw new Error('Invalid token');
+
+    if (!decoded) {
+      reject(new Error('Invalid token format'));
+      return;
+    }
 
     const { header, payload } = decoded;
 
-    const region = process.env.COGNITO_REGION || 'ap-south-1';
-    const clientPoolId = process.env.CLIENT_USER_POOL_ID;
-    const internalPoolId = process.env.INTERNAL_USER_POOL_ID;
+    // DEBUG LOGGING
+    console.log('--- JWT VERIFICATION DEBUG ---');
+    console.log('Env Region:', region);
+    console.log('Env Pool ID:', userPoolId);
+    console.log('Token Issuer:', payload.iss);
+    console.log('Token Aud/Client:', payload.aud || payload.client_id);
+    console.log('Env Client ID:', process.env.CLIENT_APP_CLIENT_ID);
+    console.log('------------------------------');
 
-    const clientIssuer = `https://cognito-idp.${region}.amazonaws.com/${clientPoolId}`;
-    const internalIssuer = `https://cognito-idp.${region}.amazonaws.com/${internalPoolId}`;
-
-    let jwks;
-    let expectedIssuer;
-    let expectedAudience;
-    let poolType;
-
-    const now = Date.now();
-    if (!jwkCacheTime || now - jwkCacheTime > JWK_CACHE_TTL) {
-      clientJWKs = null;
-      internalJWKs = null;
-      jwkCacheTime = now;
+    // Validate issuer
+    const expectedIssuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
+    if (payload.iss !== expectedIssuer) {
+      console.log(`❌ Issuer Mismatch: Expected '${expectedIssuer}', Received '${payload.iss}'`);
+      reject(new Error('Invalid token issuer'));
+      return;
     }
 
-    if (payload.iss === clientIssuer) {
-      if (!clientJWKs) clientJWKs = await getJWKs(clientPoolId, region);
-      jwks = clientJWKs;
-      expectedIssuer = clientIssuer;
-      expectedAudience = process.env.CLIENT_APP_CLIENT_ID;
-      poolType = 'client';
-    } else if (payload.iss === internalIssuer) {
-      if (!internalJWKs) internalJWKs = await getJWKs(internalPoolId, region);
-      jwks = internalJWKs;
-      expectedIssuer = internalIssuer;
-      expectedAudience = process.env.INTERNAL_APP_CLIENT_ID;
-      poolType = 'internal';
-    } else {
-      throw new Error('Unknown token issuer');
-    }
+    // Determine expected audience (client ID)
+    const clientAppClientId = process.env.CLIENT_APP_CLIENT_ID;
+    const internalAppClientId = process.env.INTERNAL_APP_CLIENT_ID || clientAppClientId;
 
-    const key = jwks.find(k => k.kid === header.kid);
-    if (!key) throw new Error('JWK not found');
+    const expectedAudiences = [clientAppClientId, internalAppClientId];
 
-    const pem = jwkToPem(key);
+    // Get signing key and verify
+    getKey(header, (err, key) => {
+      if (err) {
+        console.error('JWKS error:', err.message);
+        reject(new Error('Failed to get signing key'));
+        return;
+      }
 
-    const verified = jwt.verify(token, pem, {
-      issuer: expectedIssuer,
-      audience: expectedAudience,
-      algorithms: ['RS256']
+      try {
+        const verified = jwt.verify(token, key, {
+          issuer: expectedIssuer,
+          algorithms: ['RS256']
+        });
+
+        // Verify audience manually (since we have multiple possible audiences)
+        // Cognito Access Tokens use 'client_id', ID Tokens use 'aud'
+        const tokenAudience = verified.aud || verified.client_id;
+        if (!expectedAudiences.includes(tokenAudience)) {
+          console.error(`Invalid audience. Expected: ${expectedAudiences.join(', ')}, Received: ${tokenAudience}`);
+          reject(new Error('Invalid token audience'));
+          return;
+        }
+
+        // Verify token_use (should be 'id' for ID tokens, 'access' for access tokens)
+        if (verified.token_use !== 'id' && verified.token_use !== 'access') {
+          reject(new Error('Invalid token_use'));
+          return;
+        }
+
+        // Determine pool type based on client ID
+        const poolType = verified.aud === internalAppClientId ? 'internal' : 'client';
+
+        // Return verified user info
+        resolve({
+          sub: verified.sub,
+          email: verified.email,
+          name: verified.name || verified.email,
+          username: verified.username || verified['cognito:username'] || verified.sub,
+          role: determineUserRole(verified, poolType),
+          groups: verified['cognito:groups'] || [],
+          amr: verified.amr || [], // Authentication Methods Reference
+          poolType,
+          exp: verified.exp,
+          iat: verified.iat,
+          token_use: verified.token_use
+        });
+      } catch (verifyError) {
+        console.error('JWT verification failed:', verifyError.message);
+        if (verifyError.name === 'TokenExpiredError') {
+          reject(new Error('Token expired'));
+        } else {
+          reject(new Error('Invalid or expired token'));
+        }
+      }
     });
-
-    return {
-      sub: verified.sub,
-      email: verified.email,
-      name: verified.name || verified.email,
-      role:
-        poolType === 'client'
-          ? 'client'
-          : verified['custom:role'] || verified['cognito:groups']?.[0],
-      poolType,
-      exp: verified.exp,
-      iat: verified.iat
-    };
-  } catch (err) {
-    console.error('verifyToken failed:', err.message);
-    throw new Error('Invalid or expired token');
-  }
+  });
 };
+
+/**
+ * Determine user role from token payload
+ */
+function determineUserRole(payload, poolType) {
+  const groups = payload['cognito:groups'] || [];
+  if (groups.length > 0) {
+    const groupRoleMap = {
+      'ADMIN': 'super_admin',
+      'INTERNAL': 'internal',
+      'CLIENT': 'client',
+      'Admins': 'super_admin',
+      'Directors': 'director',
+      'ZonalHeads': 'zonal_head',
+      'BranchManagers': 'branch_manager',
+      'RMs': 'rm',
+      'Clients': 'client'
+    };
+
+    for (const group of groups) {
+      if (groupRoleMap[group]) {
+        return groupRoleMap[group];
+      }
+    }
+  }
+
+  if (payload['custom:role']) {
+    return payload['custom:role'];
+  }
+
+  return poolType === 'client' ? 'client' : 'user';
+}

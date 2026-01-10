@@ -43,12 +43,12 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/users', userRoutes);
 
-// Cognito authentication routes (production) - DISABLED FOR LOCAL DEVELOPMENT
-// import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
-// app.use('/api/auth', cognitoAuthRoutes);
-// console.log('🔐 Cognito authentication enabled');
+// Cognito authentication routes (works in both development and production)
+import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
+app.use('/api/auth', cognitoAuthRoutes);
+console.log('🔐 Cognito authentication routes enabled');
 
-// Local development auth (dummy users)
+// Local development auth (dummy users) - only if USE_LOCAL_AUTH is true
 if (process.env.USE_LOCAL_AUTH === 'true') {
   app.use('/api/local-auth', localAuthRoutes);
   console.log('🔓 Local auth enabled - using dummy users');
@@ -67,7 +67,7 @@ app.get('/prod/health', (req, res) => {
 });
 
 app.use('/prod/api/users', userRoutes);
-// app.use('/prod/api/auth', cognitoAuthRoutes); // DISABLED FOR LOCAL DEVELOPMENT
+app.use('/prod/api/auth', cognitoAuthRoutes);
 
 // 404 handler
 app.use((req, res) => {
