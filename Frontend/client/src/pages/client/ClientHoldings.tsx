@@ -1,7 +1,8 @@
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { motion, AnimatePresence } from "framer-motion";
+import { getPortfolioData } from "@/services/portfolioService";
 
 const TABS = ["Equity", "Mutual Funds", "Bonds"];
 
@@ -127,6 +128,40 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
 
 export default function ClientHoldings() {
     const [tab, setTab] = useState(0);
+    const [portfolioData, setPortfolioData] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                setLoading(true);
+                const response = await getPortfolioData();
+                console.log("Portfolio Data:", response.data);
+                // Adjust this based on actual API response structure
+                // Assuming response.data is the array of holdings
+                setPortfolioData(response.data || []);
+            } catch (err) {
+                console.error("Failed to fetch portfolio:", err);
+                setError("Failed to load portfolio data. Please try again later.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    if (loading) {
+        return (
+            <DashboardLayout role="client">
+                <div className="flex items-center justify-center h-screen">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+                </div>
+            </DashboardLayout>
+        );
+    }
+
     return (
         <DashboardLayout role="client">
             <div className="max-w-7xl mx-auto w-full p-8">
@@ -157,7 +192,8 @@ export default function ClientHoldings() {
                                 <h2 className="text-xl font-bold">Equity Holdings</h2>
                             </div>
                             {/* Table Section */}
-                            <Table columns={["Security", "Qty", "Avg Price", "CMP", "Value", "P&L", "Return"]} data={equityData} />
+                            <Table columns={["Security", "Qty", "Avg Price", "CMP", "Value", "P&L", "Return"]} data={portfolioData} />
+                            {portfolioData.length === 0 && <p className="p-6 text-center text-muted-foreground">No equity holdings found.</p>}
                         </motion.div>
                     )}
                     {tab === 1 && (

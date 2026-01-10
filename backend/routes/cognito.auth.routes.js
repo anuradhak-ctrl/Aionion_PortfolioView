@@ -1,13 +1,44 @@
 import express from 'express';
-import { loginWithPassword, refreshToken } from '../services/cognito.auth.service.js';
+import {
+  loginWithPassword,
+  refreshToken,
+  setupMfa,
+  verifyMfaSetup,
+  verifyMfaChallenge,
+  changePassword
+} from '../services/cognito.auth.service.js';
 
 const router = express.Router();
 
 /**
  * POST /api/auth/login
- * Login with username and password
+ * Main login endpoint - returns tokens OR challenge
  */
 router.post('/login', loginWithPassword);
+
+/**
+ * POST /api/auth/mfa/setup
+ * Generate MFA secret and QR code (during MFA_SETUP challenge)
+ */
+router.post('/mfa/setup', setupMfa);
+
+/**
+ * POST /api/auth/mfa/verify-setup
+ * Verify MFA code during initial enrollment
+ */
+router.post('/mfa/verify-setup', verifyMfaSetup);
+
+/**
+ * POST /api/auth/mfa/verify
+ * Verify MFA code during login (SOFTWARE_TOKEN_MFA challenge)
+ */
+router.post('/mfa/verify', verifyMfaChallenge);
+
+/**
+ * POST /api/auth/password/new
+ * Handle NEW_PASSWORD_REQUIRED challenge
+ */
+router.post('/password/new', changePassword);
 
 /**
  * POST /api/auth/refresh
@@ -24,3 +55,4 @@ router.post('/logout', (req, res) => {
 });
 
 export default router;
+
