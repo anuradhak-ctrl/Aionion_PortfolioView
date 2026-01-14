@@ -120,20 +120,68 @@ export const fetchClientPortfolio = async (clientCode) => {
             const rawData = response.data["Success Description"];
 
             // Map API fields to frontend expected fields
-            const mappedData = rawData.map(item => ({
-                security: item.SCRIP_SYMBOL || item.ISIN || '',
-                isin: item.ISIN || '',
-                qty: parseFloat(item.QTY || item.CLQTY || 0),
-                avgPrice: parseFloat(item.RATE || item.AVG_RATE || 0).toFixed(2),
-                cmp: parseFloat(item.CMP || item.CLOSE_PRICE || 0).toFixed(2),
-                value: parseFloat(item.MKT_VALUE || item.MARKET_VALUE || 0).toFixed(2),
-                pl: parseFloat(item.PL_AMT || 0).toFixed(2),
-                return: item.PL_PER ? `${parseFloat(item.PL_PER).toFixed(2)}%` : '0%',
-                sector: item.INDUSTRY || '-'
+            const mappedData = rawData.map(item => {
+                // Check if holding is long-term (>1 year) using TRADE_DATE
+                let isLongTerm = false;
+                if (item.TRADE_DATE) {
+                    const tradeDate = new Date(item.TRADE_DATE);
+                    const oneYearAgo = new Date();
+                    oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+                    isLongTerm = tradeDate < oneYearAgo;
+                }
+
+                const qty = parseFloat(item.QTY || item.CLQTY || 0);
+
+                return {
+                    security: item.SCRIP_SYMBOL || item.ISIN || '',
+                    isin: item.ISIN || '',
+                    qty: qty,
+                    qtyLongTerm: isLongTerm ? qty : 0,
+                    avgPrice: parseFloat(item.RATE || 0),
+                    cmp: parseFloat(item.CPRate || item.CLOSE_PRICE || 0),
+                    prevClosing: parseFloat(item.CPRate || item.PREV_CLOSE || 0),
+                    value: parseFloat(item.MKT_VALUE || item.MARKET_VALUE || 0),
+                    pl: parseFloat(item.PL_AMT || 0),
+                    return: parseFloat(item.PL_PER || 0),
+                    sector: item.Sectore || item.INDUSTRY || '-'
+                };
+            });
+
+            // Deduplicate by ISIN, summing quantities and values
+            const deduplicated = Object.values(
+                mappedData.reduce((acc, item) => {
+                    const key = item.isin || item.security;
+
+                    if (acc[key]) {
+                        // Merge duplicates
+                        acc[key].qty += item.qty;
+                        acc[key].qtyLongTerm += item.qtyLongTerm;
+                        acc[key].value += item.value;
+                        acc[key].pl += item.pl;
+                        // Recalculate weighted average price
+                        acc[key].avgPrice = (acc[key].avgPrice * (acc[key].qty - item.qty) + item.avgPrice * item.qty) / acc[key].qty;
+                    } else {
+                        acc[key] = { ...item };
+                    }
+
+                    return acc;
+                }, {})
+            );
+
+            // Format numbers and calculate return percentage
+            const finalData = deduplicated.map(item => ({
+                ...item,
+                avgPrice: item.avgPrice.toFixed(2),
+                cmp: item.cmp.toFixed(2),
+                prevClosing: item.prevClosing ? item.prevClosing.toFixed(2) : '0.00',
+                value: (item.qty * parseFloat(item.avgPrice)).toFixed(2), // qty * avgPrice
+                pl: item.pl.toFixed(2),
+                return: item.value > 0 ? `${((item.pl / (item.value - item.pl)) * 100).toFixed(2)}%` : '0%'
             }));
 
-            console.log('📊 Mapped Data Sample:', JSON.stringify(mappedData[0], null, 2));
-            return mappedData;
+            console.log('📊 Deduplicated Data - Total items:', finalData.length);
+            console.log('📊 Sample:', JSON.stringify(finalData[0], null, 2));
+            return finalData;
         }
 
         return [];
