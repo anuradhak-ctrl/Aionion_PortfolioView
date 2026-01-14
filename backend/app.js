@@ -1,8 +1,7 @@
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 
-dotenv.config();
+// Note: dotenv is configured in server.js to load environment-specific files
 
 // Import routes
 import userRoutes from './routes/user.routes.js';

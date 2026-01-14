@@ -351,6 +351,7 @@ const HoldingsTab = () => {
     const holdings = [
         {
             symbol: "INFY",
+            name: "Infosys",
             isin: "INE009A01021",
             sector: "IT",
             qtyAvailable: 100,
@@ -366,6 +367,7 @@ const HoldingsTab = () => {
         },
         {
             symbol: "TCS",
+            name: "Tata Consultancy Services",
             isin: "INE467B01029",
             sector: "IT",
             qtyAvailable: 50,
@@ -381,6 +383,7 @@ const HoldingsTab = () => {
         },
         {
             symbol: "HDFCBANK",
+            name: "HDFC Bank",
             isin: "INE040A01034",
             sector: "Banking",
             qtyAvailable: 200,
@@ -396,6 +399,7 @@ const HoldingsTab = () => {
         },
         {
             symbol: "AX123456",
+            name: "Axis Bluechip Fund",
             isin: "INF846K01EW2",
             sector: "Large Cap",
             qtyAvailable: 1500,
@@ -411,6 +415,7 @@ const HoldingsTab = () => {
         },
         {
             symbol: "GOI 7.26%",
+            name: "Government of India",
             isin: "IN0020180034",
             sector: "Government",
             qtyAvailable: 5,
@@ -508,7 +513,7 @@ const HoldingsTab = () => {
                 <table className="w-full text-left border-collapse">
                     <thead>
                         <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Symbol</th>
+                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50" style={{ minWidth: '200px' }}>Symbol</th>
                             <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">ISIN</th>
                             <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Sector</th>
                             <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Available</th>
@@ -526,7 +531,12 @@ const HoldingsTab = () => {
                     <tbody className="divide-y divide-border text-sm">
                         {filteredHoldings.map((h, i) => (
                             <tr key={i} className="hover:bg-muted/30 transition-colors">
-                                <td className="py-5 px-6 text-foreground font-bold whitespace-nowrap">{h.symbol}</td>
+                                <td className="py-5 px-6 whitespace-nowrap">
+                                    <div className="flex flex-col">
+                                        <span className="font-bold text-foreground text-base">{h.symbol}</span>
+                                        {h.name && <span className="text-xs text-muted-foreground font-medium mt-0.5">{h.name}</span>}
+                                    </div>
+                                </td>
                                 <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{h.isin}</td>
                                 <td className="py-5 px-6 text-muted-foreground font-medium whitespace-nowrap">{h.sector}</td>
                                 <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyAvailable}</td>

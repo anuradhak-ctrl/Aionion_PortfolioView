@@ -51,6 +51,7 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
                             <th
                                 key={col}
                                 className="py-5 px-6 font-semibold text-muted-foreground text-xs bg-background/50 whitespace-nowrap"
+                                style={(col === "Symbol" || col === "Security") ? { minWidth: '200px' } : {}}
                             >
                                 {col}
                             </th>
@@ -63,12 +64,11 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
                             {columns.map((col) => {
                                 const val = getCellValue(row, col);
 
-                                // Special Rendering Logic
-                                if (col === "Security") {
+                                if (col === "Security" || col === "Symbol") {
                                     return (
                                         <td key={col} className="py-5 px-6">
                                             <div className="flex flex-col">
-                                                <span className="font-bold text-foreground text-base">{row.security}</span>
+                                                <span className="font-bold text-foreground text-base">{row.security || row.symbol}</span>
                                                 {row.name && <span className="text-xs text-muted-foreground font-medium mt-0.5">{row.name}</span>}
                                             </div>
                                         </td>
@@ -192,7 +192,7 @@ export default function ClientHoldings() {
                                 <h2 className="text-xl font-bold">Equity Holdings</h2>
                             </div>
                             {/* Table Section */}
-                            <Table columns={["Security", "Qty", "Avg Price", "CMP", "Value", "P&L", "Return"]} data={portfolioData} />
+                            <Table columns={["Symbol", "Qty", "Avg Price", "CMP", "Value", "P&L", "Return"]} data={portfolioData} />
                             {portfolioData.length === 0 && <p className="p-6 text-center text-muted-foreground">No equity holdings found.</p>}
                         </motion.div>
                     )}
