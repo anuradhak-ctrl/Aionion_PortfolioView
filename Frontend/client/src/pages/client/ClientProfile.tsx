@@ -1,5 +1,6 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useAuth } from "@/contexts/AuthContext";
 
 // --- Components ---
 
@@ -17,6 +18,23 @@ const LabelValue = ({ label, value, valueColors = "text-foreground" }: { label: 
 );
 
 export default function ClientProfile() {
+    const { user } = useAuth();
+
+    // Get initials for avatar fallback
+    const getInitials = (name: string) => {
+        return name
+            .split(' ')
+            .map(n => n[0])
+            .join('')
+            .toUpperCase()
+            .substring(0, 2);
+    };
+
+    const displayName = user?.name || user?.username || "Client User";
+    const displayEmail = user?.email || "No email linked";
+    const initials = getInitials(displayName);
+    const clientId = localStorage.getItem('clientId') || user?.username || "N/A";
+
     return (
         <DashboardLayout role="client">
             <div className="max-w-7xl mx-auto w-full p-8 min-h-screen">
@@ -29,18 +47,18 @@ export default function ClientProfile() {
                         <div className="mb-6">
                             <Avatar className="h-24 w-24 border-4 border-muted">
                                 <AvatarImage src="" />
-                                <AvatarFallback className="bg-teal-500 text-white text-2xl font-bold">RP</AvatarFallback>
+                                <AvatarFallback className="bg-teal-500 text-white text-2xl font-bold">{initials}</AvatarFallback>
                             </Avatar>
                         </div>
 
-                        <h2 className="text-xl font-bold text-foreground mb-1">Rajesh Patel</h2>
-                        <p className="text-muted-foreground text-sm font-medium mb-8">CLT-2024-00145</p>
+                        <h2 className="text-xl font-bold text-foreground mb-1">{displayName}</h2>
+                        <p className="text-muted-foreground text-sm font-medium mb-8">Role: {user?.role || "Client"}</p>
 
                         <div className="w-full space-y-4 text-left">
-                            <LabelValue label="Email" value="r.patel@email.com" />
-                            <LabelValue label="Phone" value="+91 98XXX XXXXX" />
-                            <LabelValue label="PAN" value="XXXXX1234X" />
-                            <LabelValue label="KYC" value="Verified" valueColors="text-emerald-500" />
+                            <LabelValue label="Email" value={displayEmail} />
+                            <LabelValue label="Client ID" value={clientId} />
+                            <LabelValue label="Phone" value="+91 XXXXX XXXXX" /> {/* Placeholder as phone isn't in User type yet */}
+                            <LabelValue label="Status" value="Active" valueColors="text-emerald-500" />
                         </div>
                     </Card>
 
@@ -61,6 +79,7 @@ export default function ClientProfile() {
                         <div className="space-y-6">
                             <LabelValue label="Horizon" value="5–10 Years" />
                             <LabelValue label="Tax Slab" value="30%" />
+                            <LabelValue label="Portfolio Type" value="Growth" />
                         </div>
                     </Card>
 

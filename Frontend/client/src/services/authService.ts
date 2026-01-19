@@ -270,6 +270,11 @@ class AuthService {
     }
     if (data.user) {
       localStorage.setItem('user', JSON.stringify(data.user));
+      // CRITICAL FIX: Explicitly save clientId from username
+      // This prevents the application from defaulting to 'CLIENT001'
+      if (data.user.username) {
+        localStorage.setItem('clientId', data.user.username);
+      }
     }
   }
 
@@ -286,6 +291,7 @@ class AuthService {
       localStorage.removeItem('refreshToken');
       localStorage.removeItem('idToken');
       localStorage.removeItem('user');
+      localStorage.removeItem('clientId'); // Clear clientId
       sessionStorage.removeItem('authSession');
       sessionStorage.removeItem('authUsername');
     }
@@ -335,7 +341,8 @@ class AuthService {
   }
 
   getAccessToken(): string | null {
-    return localStorage.getItem('accessToken');
+    // Using idToken for user authentication (contains user attributes)
+    return localStorage.getItem('idToken');
   }
 
   isAuthenticated(): boolean {

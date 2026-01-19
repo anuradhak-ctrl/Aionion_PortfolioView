@@ -17,20 +17,28 @@ export function DashboardStats() {
     return (
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[1, 2, 3, 4].map((i) => (
-          <Skeleton key={i} className="h-40 rounded-2xl bg-card/50" />
+          <Skeleton key={i} className="h-40 rounded-2xl bg-muted/80" />
         ))}
       </div>
     );
   }
 
+  // Fallback for empty stats (should show 0s)
+  const displayStats = (stats && stats.length > 0) ? stats : [
+    { id: 1, label: "Total Portfolio Value", value: "₹0", subValue: "Invested: ₹0", icon: "wallet" },
+    { id: 2, label: "Total Returns", value: "₹0", change: "0.00%", icon: "trending-up" },
+    { id: 3, label: "Today's Change", value: "₹0", change: "0.00%", icon: "bar-chart-3" },
+    { id: 4, label: "Overall Return", value: "0.00%", subValue: "Simple Annualized", icon: "percent" }
+  ];
+
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-      {stats?.map((stat, index) => {
+      {displayStats.map((stat, index) => {
         const Icon = iconMap[stat.icon] || Wallet;
         const isPositive = stat.change?.startsWith("+");
-        
+
         return (
-          <motion.div 
+          <motion.div
             key={stat.id}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -54,7 +62,7 @@ export function DashboardStats() {
 
             <h3 className="text-muted-foreground text-sm font-medium mb-1">{stat.label}</h3>
             <div className="text-2xl font-display font-bold text-foreground mb-2 tracking-tight">{stat.value}</div>
-            
+
             {stat.subValue && (
               <p className="text-xs text-muted-foreground border-t border-border pt-3 mt-2 flex items-center gap-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-primary/50" />

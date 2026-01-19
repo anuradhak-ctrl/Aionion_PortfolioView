@@ -6,6 +6,8 @@ import {
   RespondToAuthChallengeCommand
 } from "@aws-sdk/client-cognito-identity-provider";
 import QRCode from 'qrcode';
+// DISABLED: Aurora database sync - using Cognito-only mode
+// import { syncCognitoUserToAurora } from '../auth/user-sync.service.js';
 
 const client = new CognitoIdentityProviderClient({
   region: process.env.COGNITO_REGION || "ap-south-1"
@@ -78,6 +80,19 @@ export const loginWithPassword = async (req, res) => {
         amr: payload.amr || [] // Authentication Methods Reference (pwd, mfa, etc.)
       };
 
+      // DISABLED: Aurora database sync - using Cognito-only mode
+      // let auroraUser = null;
+      // try {
+      //   auroraUser = await syncCognitoUserToAurora(payload, validUserType);
+      //   user.auroraId = auroraUser.id;
+      //   user.dbRole = auroraUser.role;
+      //   user.status = auroraUser.status;
+      //   console.log(`✅ SUCCESS: ${user.username} (${user.role}) synced to Aurora ID: ${auroraUser.id}`);
+      // } catch (syncError) {
+      //   console.error('⚠️ Aurora sync failed (non-blocking):', syncError.message);
+      //   // Don't block login if sync fails - user can still use the app
+      // }
+
       console.log(`✅ SUCCESS: ${user.username} (${user.role}) - AMR: ${JSON.stringify(user.amr)}`);
 
       return res.json({
@@ -88,7 +103,14 @@ export const loginWithPassword = async (req, res) => {
           accessToken: AccessToken,
           refreshToken: RefreshToken
         },
-        user
+        user,
+        // DISABLED: Aurora user data
+        // auroraUser: auroraUser ? {
+        //   id: auroraUser.id,
+        //   role: auroraUser.role,
+        //   status: auroraUser.status,
+        //   hierarchy_level: auroraUser.hierarchy_level
+        // } : null
       });
     }
 
@@ -313,6 +335,17 @@ export const verifyMfaChallenge = async (req, res) => {
         amr: payload.amr || []
       };
 
+      // DISABLED: Aurora database sync - using Cognito-only mode
+      // let auroraUser = null;
+      // try {
+      //   auroraUser = await syncCognitoUserToAurora(payload, userType);
+      //   user.auroraId = auroraUser.id;
+      //   user.dbRole = auroraUser.role;
+      //   console.log(`✅ MFA verified: ${user.username} synced to Aurora ID: ${auroraUser.id}`);
+      // } catch (syncError) {
+      //   console.error('⚠️ Aurora sync failed (non-blocking):', syncError.message);
+      // }
+
       console.log(`✅ MFA verified: ${user.username} - AMR: ${JSON.stringify(user.amr)}`);
 
       return res.json({
@@ -323,7 +356,13 @@ export const verifyMfaChallenge = async (req, res) => {
           accessToken: AccessToken,
           refreshToken: RefreshToken
         },
-        user
+        user,
+        // DISABLED: Aurora user data
+        // auroraUser: auroraUser ? {
+        //   id: auroraUser.id,
+        //   role: auroraUser.role,
+        //   status: auroraUser.status
+        // } : null
       });
     }
 

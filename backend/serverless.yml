@@ -28,6 +28,25 @@ provider:
         - logs:CreateLogStream
         - logs:PutLogEvents
       Resource: "arn:aws:logs:*:*:*"
+  
+  # HTTP API CORS Configuration
+  httpApi:
+    cors:
+      allowedOrigins:
+        - https://staging.diqput41pv8a2.amplifyapp.com
+      allowedHeaders:
+        - Content-Type
+        - Authorization
+        - X-Amz-Date
+        - X-Api-Key
+        - X-Amz-Security-Token
+      allowedMethods:
+        - GET
+        - POST
+        - PUT
+        - DELETE
+        - OPTIONS
+      allowCredentials: true
 
 # Package configuration
 package:
@@ -52,26 +71,14 @@ package:
 functions:
   # Main API function
   api:
-    handler: lambda.handler
+    handler: index.handler
     events:
-      - http:
+      - httpApi:
           path: /{proxy+}
-          method: ANY
-          cors:
-            origin: ${env:FRONTEND_URL}
-            headers:
-              - Content-Type
-              - Authorization
-            allowCredentials: true
-      - http:
+          method: '*'
+      - httpApi:
           path: /
-          method: ANY
-          cors:
-            origin: ${env:FRONTEND_URL}
-            headers:
-              - Content-Type
-              - Authorization
-            allowCredentials: true
+          method: '*'
 
 # Plugins
 plugins:

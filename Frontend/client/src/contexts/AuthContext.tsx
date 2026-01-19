@@ -35,13 +35,28 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (currentUser && token) {
         try {
+          console.log('🔍 Validating stored token...');
           // Check if token is expired by decoding JWT
           const tokenParts = token.split('.');
           if (tokenParts.length === 3) {
             const payload = JSON.parse(atob(tokenParts[1]));
-            const expiration = payload.exp * 1000; // Convert to milliseconds
+            console.log('📦 Token payload:', payload);
 
-            if (Date.now() >= expiration) {
+            if (!payload.exp) {
+              console.warn('⚠️ Token has no expiration field, treating as valid');
+              setUser(currentUser);
+              setIsLoading(false);
+              return;
+            }
+
+            const expiration = payload.exp * 1000; // Convert to milliseconds
+            const now = Date.now();
+            const timeUntilExpiry = expiration - now;
+
+            console.log('⏰ Token expires at:', new Date(expiration).toLocaleString());
+            console.log('⏰ Time until expiry:', Math.round(timeUntilExpiry / 1000 / 60), 'minutes');
+
+            if (now >= expiration) {
               console.warn('⚠️ Token expired, clearing auth state');
               await authService.logout();
               setUser(null);
@@ -51,6 +66,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           }
 
           // Token not expired, restore user
+          console.log('✅ Token valid, restoring user');
           setUser(currentUser);
         } catch (error) {
           // Token parsing error, clear auth
@@ -72,6 +88,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       console.log('🔍 Login response user:', response.user);
       if (response.user) {
         setUser(response.user);
+        // Wait for next tick to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 0));
       }
     } catch (error) {
       console.error('Login failed:', error);

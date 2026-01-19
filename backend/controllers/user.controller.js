@@ -25,6 +25,17 @@ export const getMe = (req, res) => {
       isAdmin: ['super_admin', 'director'].includes(req.user.role)
     };
 
+    // Proactive Cache Warmup: DISABLED (Conflicted with ClientDataContext Global Hydration)
+    // The Frontend now handles blocking hydration, so this background warmup is redundant and risky.
+    /*
+    if (req.user.poolType === 'client' || req.user.role === 'client') {
+      console.log(`🔥 Triggering Portfolio Warmup for ${req.user.sub}`);
+      techexcelService.fetchClientPortfolio({ CLIENT_CODE: req.user.sub, bypassCache: true })
+        .then(() => console.log(`✅ Warmup Complete for ${req.user.sub}`))
+        .catch(err => console.log(`⚠️ Warmup Background Error for ${req.user.sub}:`, err.message));
+    }
+    */
+
     res.json({
       user: {
         id: req.user.sub,
@@ -132,17 +143,102 @@ export const getClientPortfolio = async (req, res) => {
       return res.status(400).json({ message: 'Client code not found for user' });
     }
 
-    const portfolioData = await techexcelService.fetchClientPortfolio(clientCode);
+    // Check if client requested fresh data (bypass cache)
+    // const bypassCache = req.query.fresh === 'true'; // DEPRECATED: GET /portfolio is READ-ONLY
+
+    // 1. Try Read-Only Cache
+    const cachedData = await techexcelService.getCachedPortfolio(clientCode);
+
+    if (cachedData) {
+      // console.log(`⚡ Fast Portfolio Read for ${clientCode}`);
+      return res.json({
+        success: true,
+        clientCode,
+        cash: cachedData.cash,
+        data: cachedData.holdings, // Map holdings -> data
+        timestamp: cachedData.timestamp
+      });
+    }
+
+    // 2. Cache Miss (First Load)
+    console.log(`⚠️ Pure Cache Miss for ${clientCode}. Waiting for client trigger.`);
+
+    // PURE READ ENDPOINT: DO NOT TRIGGER TECHEXCEL HERE.
+
+    // Return empty state (Frontend should handle this gracefuly, e.g. show "Updating...")
+    return res.json({
+      success: true,
+      clientCode,
+      cash: { previousClosing: 0, availableBalance: 0 },
+      data: [],
+      timestamp: 0,
+      status: 'syncing'
+    });
+
+  } catch (err) {
+    console.error('getClientPortfolio error:', err);
+    // Return empty data instead of error when API is unreachable
+    // This allows frontend to show "No data found" message
+    res.json({
+      success: false,
+      clientCode: req.user.username,
+      cash: { previousClosing: 0, availableBalance: 0 },
+      data: [],
+      message: 'Unable to fetch portfolio data. Please check your network connection or try again later.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  }
+};
+
+// @desc Refresh client portfolio (Explicit Write Action)
+export const refreshClientPortfolio = async (req, res) => {
+  try {
+    const clientCode = req.user.username;
+    console.log('🔄 Explicit Portfolio Refresh for:', clientCode);
+
+    const result = await techexcelService.fetchClientPortfolio({
+      CLIENT_CODE: clientCode,
+      bypassCache: true
+    });
 
     res.json({
       success: true,
       clientCode,
-      data: portfolioData
+      cash: result.cash,
+      data: result.holdings,
+      timestamp: result.timestamp
     });
   } catch (err) {
-    console.error('getClientPortfolio error:', err);
+    console.error('refreshClientPortfolio error:', err);
+    res.status(500).json({ message: 'Refresh failed' });
+  }
+};
+
+// @desc Get client ledger/account statement (Client only)
+export const getLedger = async (req, res) => {
+  try {
+    const clientCode = req.user.username;
+    const financialYear = req.query.financialYear; // e.g., "2025-26"
+    console.log('📄 Fetching ledger for User:', req.user.username, 'Role:', req.user.role, 'FY:', financialYear || 'current');
+
+    if (!clientCode) {
+      return res.status(400).json({ message: 'Client code not found for user' });
+    }
+
+    const ledgerData = await techexcelService.fetchLedger({
+      CLIENT_CODE: clientCode,
+      financialYear
+    });
+
+    res.json({
+      success: true,
+      clientCode,
+      data: ledgerData
+    });
+  } catch (err) {
+    console.error('getLedger error:', err);
     res.status(500).json({
-      message: 'Failed to fetch portfolio data',
+      message: 'Failed to fetch ledger data',
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }

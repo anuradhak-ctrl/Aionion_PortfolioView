@@ -97,12 +97,18 @@ export function DashboardLayout({ children, role = "client" }: DashboardLayoutPr
                                     </div>
                                 )}
 
-                                <button className="relative p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground">
+                                <button
+                                    onClick={() => setLocation('/under-development')}
+                                    className="relative p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground"
+                                >
                                     <Bell className="w-5 h-5" />
                                     <span className="absolute top-2 right-2.5 w-2 h-2 bg-rose-500 rounded-full border-2 border-background" />
                                 </button>
                                 <ThemeToggle />
-                                <button className="p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground hidden sm:block">
+                                <button
+                                    onClick={() => setLocation('/under-development')}
+                                    className="p-2 rounded-full hover:bg-secondary transition-colors text-muted-foreground hover:text-foreground hidden sm:block"
+                                >
                                     <Settings className="w-5 h-5" />
                                 </button>
                             </div>

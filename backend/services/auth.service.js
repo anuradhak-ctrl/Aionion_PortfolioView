@@ -56,19 +56,9 @@ export const verifyToken = async (token) => {
 
     const { header, payload } = decoded;
 
-    // DEBUG LOGGING
-    console.log('--- JWT VERIFICATION DEBUG ---');
-    console.log('Env Region:', region);
-    console.log('Env Pool ID:', userPoolId);
-    console.log('Token Issuer:', payload.iss);
-    console.log('Token Aud/Client:', payload.aud || payload.client_id);
-    console.log('Env Client ID:', process.env.CLIENT_APP_CLIENT_ID);
-    console.log('------------------------------');
-
     // Validate issuer
     const expectedIssuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
     if (payload.iss !== expectedIssuer) {
-      console.log(`❌ Issuer Mismatch: Expected '${expectedIssuer}', Received '${payload.iss}'`);
       reject(new Error('Invalid token issuer'));
       return;
     }
@@ -117,6 +107,7 @@ export const verifyToken = async (token) => {
           email: verified.email,
           name: verified.name || verified.email,
           username: verified.username || verified['cognito:username'] || verified.sub,
+          'cognito:username': verified['cognito:username'],  // Pass through
           role: determineUserRole(verified, poolType),
           groups: verified['cognito:groups'] || [],
           amr: verified.amr || [], // Authentication Methods Reference

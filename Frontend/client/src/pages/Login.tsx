@@ -19,7 +19,10 @@ export default function Login() {
 
     try {
       await login({ username, password });
-      setLocation("/");
+      // Wait for auth state to fully update before redirect
+      setTimeout(() => {
+        setLocation("/");
+      }, 300);
     } catch (err: any) {
       setError(err.message || "Login failed. Please check your credentials.");
     } finally {
@@ -41,7 +44,7 @@ export default function Login() {
               Portfolio View
             </h1>
             <p className="text-muted-foreground">Sign in to your account</p>
-         </div>
+          </div>
 
           {/* Error Message */}
           {error && (

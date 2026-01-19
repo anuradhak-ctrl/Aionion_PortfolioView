@@ -1,6 +1,12 @@
-import { DashboardLayout } from "@/components/DashboardLayout";
-import { useState } from "react";
+﻿import { DashboardLayout } from "@/components/DashboardLayout";
+import { useClientData } from "@/contexts/ClientDataContext";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { getPortfolioData } from "@/services/portfolioService";
+import { ExportButton } from "@/components/ExportButton";
+import { exportReport, ExportFormat } from "@/utils/reportExporter";
+import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
+import apiClient from "@/lib/apiClient";
 
 // --- Types ---
 type Tab = "Holdings" | "Transactions" | "Ledger" | "Dividends" | "Tax P&L" | "Capital Gains" | "XIRR";
@@ -68,170 +74,394 @@ const ChevronDownIcon = ({ className = "w-6 h-6" }: { className?: string }) => (
 const LedgerTab = () => {
     const [filter, setFilter] = useState("All");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const { data: clientData, isLoading: clientDataLoading } = useClientData();
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-    const ledgerEntries = [
-        {
-            particulars: "Opening Balance",
-            postingDate: "",
-            costCenter: "",
-            voucherType: "",
-            debit: "0.00",
-            credit: "0",
-            netBalance: "0.00",
-            asset: "Equity"
-        },
-        {
-            particulars: "Funds added using UPI from ROH673 with reference number 512192062960",
-            postingDate: "1-May-2025",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Bank Receipts",
-            debit: "0.00",
-            credit: "100",
-            netBalance: "100.00",
-            asset: "Equity"
-        },
-        {
-            particulars: "Funds auto-settled from the primary account with reference number 264a94",
-            postingDate: "",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Bank Payments",
-            debit: "0.00",
-            credit: "0",
-            netBalance: "0.00",
-            asset: "Equity"
-        },
-        {
-            particulars: "Funds added using UPI from ROH673 with reference number 519561470870",
-            postingDate: "14-Jul-2025",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Bank Receipts",
-            debit: "0",
-            credit: "200.00",
-            netBalance: "200.00",
-            asset: "Equity"
-        },
-        {
-            particulars: "Net settlement for Equity with settlement number: 2025133",
-            postingDate: "14-Jul-2025",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Book Voucher",
-            debit: "81.9149",
-            credit: "0",
-            netBalance: "118.09",
-            asset: "Equity"
-        },
-        {
-            particulars: "AMC for Demat Account for 18-06-2025 to 17-06-2025",
-            postingDate: "22-Jul-2025",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Journal Entry",
-            debit: "88.5",
-            credit: "0.00",
-            netBalance: "29.59",
-            asset: "Equity"
-        },
-        {
-            particulars: "Net settlement for Equity with settlement number: 2025167",
-            postingDate: "2-Sep-2025",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Book Voucher",
-            debit: "6.6202",
-            credit: "0",
-            netBalance: "22.96",
-            asset: "Equity"
-        },
-        {
-            particulars: "Funds transferred for Equity as part of quarterly settlement number 6",
-            postingDate: "20-Oct-2025",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Bank Receipts",
-            debit: "22.96",
-            credit: "0",
-            netBalance: "0.0049",
-            asset: "Equity"
-        },
-        {
-            particulars: "AMC for Demat Account for 18-06-2025 to 16-09-2025",
-            postingDate: "2025-10-24",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Journal Entry",
-            debit: "88.5",
-            credit: "0",
-            netBalance: "-88.4951",
-            asset: "Equity"
-        },
-        {
-            particulars: "Funds added using UPI from ROH673 with reference number [Q] 2025-11-28",
-            postingDate: "2025-11-28",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Bank Receipts",
-            debit: "0",
-            credit: "100",
-            netBalance: "11.5049",
-            asset: "Equity"
-        },
-        {
-            particulars: "Being payment gateway charges debited for ROH673",
-            postingDate: "2025-11-28",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Journal Entry",
-            debit: "10.62",
-            credit: "0",
-            netBalance: "0.8849",
-            asset: "Equity"
-        },
-        {
-            particulars: "Delayed payment charges for November - 2025",
-            postingDate: "2025-12-05",
-            costCenter: "NSE-EQ - Z",
-            voucherType: "Journal Entry",
-            debit: "1.19",
-            credit: "0",
-            netBalance: "-0.3051",
-            asset: "Equity"
-        },
-        {
-            particulars: "Closing Balance",
-            postingDate: "",
-            costCenter: "",
-            voucherType: "",
-            debit: "",
-            credit: "",
-            netBalance: "-0.3051",
-            asset: "Equity"
-        },
-    ];
+    // Financial Year selector
+    const getCurrentFY = () => {
+        const today = new Date();
+        const currentMonth = today.getMonth();
+        const currentYear = today.getFullYear();
+        // If Jan-Mar, FY started last year. If Apr-Dec, FY started this year
+        const fyStart = currentMonth < 3 ? currentYear - 1 : currentYear;
+        return `FY ${fyStart}-${String(fyStart + 1).slice(-2)}`;
+    };
+    const [selectedFY, setSelectedFY] = useState(getCurrentFY());
 
-    const filteredLedgerEntries = filter === "All"
-        ? ledgerEntries
-        : ledgerEntries.filter(t => t.asset === filter);
+    // FY-specific ledger data
+    const [fyLedgerData, setFyLedgerData] = useState<any[]>([]);
+    const [isFetchingFY, setIsFetchingFY] = useState(false);
 
-    const handleDownload = () => {
-        const headers = ["Particulars", "Posting Date", "Cost Center", "Voucher Type", "Debit", "Credit", "Net Balance"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredLedgerEntries.map(row =>
-                [
-                    `"${row.particulars}"`,
-                    row.postingDate,
-                    row.costCenter,
-                    row.voucherType,
-                    row.debit,
-                    row.credit,
-                    row.netBalance
-                ].join(",")
-            )
-        ].join("\n");
+    // Use FY-specific data if available, otherwise use global context data
+    const ledgerEntries = fyLedgerData.length > 0 ? fyLedgerData : clientData.ledger;
+    const loading = isFetchingFY || clientDataLoading;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `ledger_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Fetch FY-specific ledger data when FY changes
+    useEffect(() => {
+        const fetchFYLedger = async () => {
+            console.log('🔄 FY Changed to:', selectedFY);
+            console.log('🔄 Current FY is:', getCurrentFY());
+
+            // If it's current FY, use global context data
+            if (selectedFY === getCurrentFY()) {
+                console.log('✅ Using current FY data from context');
+                setFyLedgerData([]);
+                return;
+            }
+
+            console.log('📡 Fetching FY-specific data for:', selectedFY);
+            setIsFetchingFY(true);
+            try {
+                const fyParam = selectedFY.replace('FY ', ''); // "2024-25"
+                console.log('📡 API call with FY parameter:', fyParam);
+
+                const response = await apiClient.get(`/api/users/ledger?financialYear=${fyParam}`);
+                console.log('📡 API Response:', response);
+
+                if (response.data.success) {
+                    // Map the data same way as in ClientDataContext
+                    const mapped = response.data.data.map((item: any) => ({
+                        particulars: item.particulars,
+                        postingDate: item.date || "",
+                        costCenter: item.costCenter || "-",
+                        voucherType: item.transType || "",
+                        voucherNo: item.voucherNo || "",
+                        debit: item.debit,
+                        credit: item.credit,
+                        netBalance: item.balance,
+                        asset: "Equity"
+                    }));
+                    console.log('✅ Mapped data:', mapped.length, 'entries');
+                    console.log('✅ First entry:', mapped[0]);
+                    setFyLedgerData(mapped);
+                }
+            } catch (error) {
+                console.error('❌ Error fetching FY ledger:', error);
+            } finally {
+                setIsFetchingFY(false);
+            }
+        };
+
+        fetchFYLedger();
+    }, [selectedFY]);
+
+    // Calendar state
+    const [fromDate, setFromDate] = useState<Date | null>(null);
+    const [toDate, setToDate] = useState<Date | null>(null);
+    const [showCalendar, setShowCalendar] = useState(false);
+    const [calendarMode, setCalendarMode] = useState<'from' | 'to'>('from');
+    const [currentMonth, setCurrentMonth] = useState(new Date());
+
+    // Helper to format date as DD-MM-YYYY
+    const formatDate = (date: Date | null) => {
+        if (!date) return "";
+        const day = String(date.getDate()).padStart(2, '0');
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const year = date.getFullYear();
+        return `${day}-${month}-${year}`;
+    };
+
+    // Helper to parse DD-MM-YYYY to Date
+    const parseDate = (dateStr: string): Date | null => {
+        if (!dateStr) return null;
+        const parts = dateStr.split('-');
+        if (parts.length !== 3) return null;
+        return new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0]));
+    };
+
+    // Quick date presets
+    const applyPreset = (preset: string) => {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        switch (preset) {
+            case 'today':
+                setFromDate(today);
+                setToDate(today);
+                break;
+            case 'yesterday':
+                const yesterday = new Date(today);
+                yesterday.setDate(yesterday.getDate() - 1);
+                setFromDate(yesterday);
+                setToDate(yesterday);
+                break;
+            case 'last7':
+                const last7 = new Date(today);
+                last7.setDate(last7.getDate() - 7);
+                setFromDate(last7);
+                setToDate(today);
+                break;
+            case 'last30':
+                const last30 = new Date(today);
+                last30.setDate(last30.getDate() - 30);
+                setFromDate(last30);
+                setToDate(today);
+                break;
+            case 'thisMonth':
+                const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+                setFromDate(monthStart);
+                setToDate(today);
+                break;
+            case 'lastMonth':
+                const lastMonthStart = new Date(today.getFullYear(), today.getMonth() - 1, 1);
+                const lastMonthEnd = new Date(today.getFullYear(), today.getMonth(), 0);
+                setFromDate(lastMonthStart);
+                setToDate(lastMonthEnd);
+                break;
+            case 'thisFY':
+                const fyStart = today.getMonth() >= 3
+                    ? new Date(today.getFullYear(), 3, 1)  // April 1st this year
+                    : new Date(today.getFullYear() - 1, 3, 1);  // April 1st last year
+                setFromDate(fyStart);
+                setToDate(today);
+                break;
+            case 'all':
+                setFromDate(null);
+                setToDate(null);
+                break;
+        }
+        setShowCalendar(false);
+    };
+
+
+
+    // Reset page on filter or date change
+    useEffect(() => { setCurrentPage(1); }, [filter, fromDate, toDate]);
+
+    const filteredLedgerEntries = ledgerEntries.filter(entry => {
+        // Asset filter
+        if (filter !== "All" && entry.asset !== filter) return false;
+
+        // Date filter
+        if (fromDate || toDate) {
+            const entryDate = parseDate(entry.postingDate);
+            if (!entryDate) return false;
+
+            entryDate.setHours(0, 0, 0, 0);
+
+            if (fromDate) {
+                const from = new Date(fromDate);
+                from.setHours(0, 0, 0, 0);
+                if (entryDate < from) return false;
+            }
+
+            if (toDate) {
+                const to = new Date(toDate);
+                to.setHours(0, 0, 0, 0);
+                if (entryDate > to) return false;
+            }
+        }
+
+        return true;
+    });
+
+    const indexOfLastItem = currentPage * itemsPerPage;
+    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+    const currentEntries = filteredLedgerEntries.slice(indexOfFirstItem, indexOfLastItem);
+    const totalPages = Math.ceil(filteredLedgerEntries.length / itemsPerPage);
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = clientData.clientCode || localStorage.getItem('clientId');
+
+        if (!clientId) {
+            console.error("Critical: Client ID missing for report export");
+            return;
+        }
+
+        let logoBase64 = "";
+        try {
+            console.log('📸 Attempting to load logo from /logo.png...');
+            const response = await fetch('/logo.png');
+            console.log('📸 Logo fetch response status:', response.status);
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch logo: ${response.status} ${response.statusText}`);
+            }
+
+            const blob = await response.blob();
+            console.log('📸 Logo blob size:', blob.size, 'bytes, type:', blob.type);
+
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => {
+                    console.log('📸 Logo converted to base64, length:', (reader.result as string)?.length);
+                    resolve(reader.result as string);
+                };
+                reader.onerror = (error) => {
+                    console.error('📸 FileReader error:', error);
+                    resolve('');
+                };
+                reader.readAsDataURL(blob);
+            });
+
+            if (logoBase64) {
+                console.log('✅ Logo loaded successfully');
+            } else {
+                console.warn('⚠️ Logo base64 is empty');
+            }
+        } catch (error) {
+            console.error('❌ Logo load error:', error);
+            console.error('The Excel export will continue without the logo');
+        }
+
+        // Calculate summary
+        const openingEntry = ledgerEntries.find(e => e.particulars.toLowerCase().includes('opening balance'));
+        const openingBalance = openingEntry ? parseFloat(openingEntry.netBalance) : 0;
+        const totalDebit = filteredLedgerEntries.reduce((sum, item) => sum + parseFloat(item.debit || 0), 0);
+        const totalCredit = filteredLedgerEntries.reduce((sum, item) => sum + parseFloat(item.credit || 0), 0);
+        const closingBalance = filteredLedgerEntries.length > 0 ? parseFloat(filteredLedgerEntries[filteredLedgerEntries.length - 1].netBalance) : 0;
+
+        // Format date range for title
+        const dateRangeText = fromDate && toDate
+            ? `from ${formatDate(fromDate)} to ${formatDate(toDate)}`
+            : today;
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <style>
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            font-family: Arial, sans-serif;
+        }
+        .header-row td {
+            border: none;
+            padding: 5px 0;
+            font-family: Arial, sans-serif;
+            background: #ffffff;
+        }
+        .company-name {
+            font-size: 16px;
+            font-weight: bold;
+            color: #2563eb;
+        }
+        .info-label {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+        .info-value {
+            color: #666;
+            font-size: 13px;
+        }
+        .report-title {
+            font-size: 14px;
+            font-weight: 600;
+            color: #333;
+        }
+        .data-header th {
+            background-color: #ffffff;
+            padding: 10px 8px;
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: #555;
+            border-top: 1px solid #dee2e6;
+            border-bottom: 2px solid #dee2e6;
+            border-left: 1px solid #dee2e6;
+            border-right: 1px solid #dee2e6;
+        }
+        td.data-cell {
+            padding: 9px 8px;
+            border: 1px solid #e9ecef;
+            font-size: 12px;
+            color: #333;
+            background: #ffffff;
+        }
+        .text-right { text-align: right; }
+        .balance-row td {
+            font-weight: 600;
+        }
+        .positive { color: #059669; }
+        .negative { color: #dc2626; }
+    </style>
+</head>
+<body>
+    <table cellspacing="0" cellpadding="0">
+        <!-- Logo Row (if available) -->
+        ${logoBase64 ? `<tr class="header-row"><td colspan="7"><img src="${logoBase64}" height="60" alt="Logo" /></td></tr>` : ''}
+
+        <!-- Company Name Row -->
+        <tr class="header-row">
+            <td colspan="7" class="company-name">AIONION CAPITAL MARKETS</td>
+        </tr>
+
+        <!-- Empty Row for spacing -->
+        <tr class="header-row"><td colspan="7">&nbsp;</td></tr>
+
+        <!-- Client ID Row -->
+        <tr class="header-row">
+            <td colspan="7"><span class="info-label">Client ID</span>&nbsp;&nbsp;&nbsp;&nbsp;<span class="info-value">${clientId}</span></td>
+        </tr>
+
+        <!-- Empty Row for spacing -->
+        <tr class="header-row"><td colspan="7">&nbsp;</td></tr>
+
+        <!-- Report Title Row -->
+        <tr class="header-row">
+            <td colspan="7" class="report-title">Ledger for ${filter === "All" ? "All Assets" : filter} ${dateRangeText}</td>
+        </tr>
+
+        <!-- Empty Row before table -->
+        <tr class="header-row"><td colspan="7">&nbsp;</td></tr>
+
+        <!-- Data Table Headers -->
+        <tr class="data-header">
+            <th>Particulars</th>
+            <th>Posting Date</th>
+            <th>Cost Center</th>
+            <th>Voucher Type</th>
+            <th class="text-right">Debit</th>
+            <th class="text-right">Credit</th>
+            <th class="text-right">Net Balance</th>
+        </tr>
+
+        <!-- Data Rows -->
+        ${filteredLedgerEntries.map(row => {
+            const isBalanceRow = row.particulars.includes('Opening Balance') || row.particulars.includes('Closing Balance');
+            const balanceValue = parseFloat(row.netBalance);
+            const balanceClass = balanceValue < 0 ? 'negative' : 'positive';
+            return `
+        <tr${isBalanceRow ? ' class="balance-row"' : ''}>
+            <td class="data-cell">${row.particulars || "-"}</td>
+            <td class="data-cell">${row.postingDate || "-"}</td>
+            <td class="data-cell">${row.costCenter || "-"}</td>
+            <td class="data-cell">${row.voucherType || "-"}</td>
+            <td class="data-cell text-right">${row.debit || "-"}</td>
+            <td class="data-cell text-right">${row.credit || "-"}</td>
+            <td class="data-cell text-right ${balanceClass}">${row.netBalance || "-"}</td>
+        </tr>`;
+        }).join('')}
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            // Open in new window and trigger print dialog for PDF
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) {
+                newWindow.onload = () => {
+                    setTimeout(() => newWindow.print(), 250);
+                };
+            }
+        } else {
+            // Download as Excel file
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `ledger_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
     return (
@@ -241,7 +471,31 @@ const LedgerTab = () => {
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
                     <h2 className="text-lg md:text-xl font-bold text-foreground">Transaction Ledger</h2>
 
-                    <div className="flex gap-2 md:gap-4 w-full sm:w-auto">
+                    <div className="flex flex-wrap gap-2 md:gap-4 w-full sm:w-auto items-center">
+                        {/* Date Range Selector */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setShowCalendar(!showCalendar)}
+                                className="flex items-center gap-2 px-3 md:px-4 py-2 md:py-2.5 bg-background hover:bg-muted/50 border border-border rounded-lg text-xs md:text-sm font-semibold transition-all"
+                            >
+                                <Calendar className="w-3 h-3 md:w-4 md:h-4" />
+                                <span className="truncate max-w-[200px]">
+                                    {fromDate && toDate
+                                        ? `${formatDate(fromDate)} ~ ${formatDate(toDate)}`
+                                        : "Select date range"}
+                                </span>
+                            </button>
+                            {(fromDate || toDate) && (
+                                <button
+                                    onClick={(e) => { e.stopPropagation(); setFromDate(null); setToDate(null); }}
+                                    className="absolute -top-1 -right-1 w-5 h-5 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center text-xs hover:bg-destructive/80 transition-colors"
+                                    title="Clear dates"
+                                >
+                                    ×
+                                </button>
+                            )}
+                        </div>
+
                         {/* Filter Dropdown */}
                         <div className="relative flex-1 sm:flex-none">
                             <button
@@ -273,73 +527,491 @@ const LedgerTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
 
-            {/* Table Section - With Horizontal Scroll */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse">
+
+            {/* Calendar Popup - Dual Calendar View */}
+            {showCalendar && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setShowCalendar(false)} />
+                    <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-2xl p-4 w-auto">
+                        {/* Quick Preset Buttons */}
+                        <div className="flex flex-wrap gap-2 mb-3 pb-3 border-b border-gray-200 dark:border-gray-700">
+                            <button
+                                onClick={() => applyPreset('last7')}
+                                className="px-3 py-1.5 text-xs font-semibold border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-all duration-200"
+                            >
+                                last 7 days
+                            </button>
+                            <button
+                                onClick={() => applyPreset('last30')}
+                                className="px-3 py-1.5 text-xs font-semibold border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400 transition-all duration-200"
+                            >
+                                last 30 days
+                            </button>
+
+                            {/* FY Selector Buttons */}
+                            <button
+                                onClick={() => {
+                                    setSelectedFY(getCurrentFY());
+                                    setFromDate(null);
+                                    setToDate(null);
+                                    setShowCalendar(false);
+                                }}
+                                className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-all duration-200 ${selectedFY === getCurrentFY()
+                                    ? 'bg-blue-500 text-white border-blue-500'
+                                    : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                                    }`}
+                            >
+                                {getCurrentFY()}
+                            </button>
+                            <button
+                                onClick={() => {
+                                    const today = new Date();
+                                    const currentMonth = today.getMonth();
+                                    const currentYear = today.getFullYear();
+                                    const fyStart = (currentMonth < 3 ? currentYear - 1 : currentYear) - 1;
+                                    const prevFY = `FY ${fyStart}-${String(fyStart + 1).slice(-2)}`;
+
+                                    setSelectedFY(prevFY);
+                                    setFromDate(null);
+                                    setToDate(null);
+                                    setShowCalendar(false);
+                                }}
+                                className={`px-3 py-1.5 text-xs font-semibold border rounded-lg transition-all duration-200 ${selectedFY === (() => {
+                                    const today = new Date();
+                                    const currentMonth = today.getMonth();
+                                    const currentYear = today.getFullYear();
+                                    const fyStart = (currentMonth < 3 ? currentYear - 1 : currentYear) - 1;
+                                    return `FY ${fyStart}-${String(fyStart + 1).slice(-2)}`;
+                                })()
+                                    ? 'bg-blue-500 text-white border-blue-500'
+                                    : 'border-gray-300 dark:border-gray-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 hover:border-blue-400'
+                                    }`}
+                            >
+                                {(() => {
+                                    const today = new Date();
+                                    const currentMonth = today.getMonth();
+                                    const currentYear = today.getFullYear();
+                                    const fyStart = (currentMonth < 3 ? currentYear - 1 : currentYear) - 1;
+                                    return `FY ${fyStart}-${String(fyStart + 1).slice(-2)}`;
+                                })()}
+                            </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-3">
+                            {/* From Calendar */}
+                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 shadow-sm">
+                                <div className="text-center mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                    <span className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">From</span>
+                                </div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <button
+                                        onClick={() => {
+                                            const prev = new Date(currentMonth);
+                                            prev.setMonth(prev.getMonth() - 1);
+                                            setCurrentMonth(prev);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 hover:scale-110"
+                                    >
+                                        <ChevronLeft className="w-4 h-4" />
+                                    </button>
+                                    <span className="text-sm font-bold">
+                                        {currentMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            const next = new Date(currentMonth);
+                                            next.setMonth(next.getMonth() + 1);
+                                            setCurrentMonth(next);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 hover:scale-110"
+                                    >
+                                        <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                    </button>
+                                </div>
+
+                                {/* Day Headers */}
+                                <div className="grid grid-cols-7 gap-0.5 mb-1">
+                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                        <div key={day} className="text-center text-[10px] font-semibold text-muted-foreground py-0.5">
+                                            {day}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Calendar Days */}
+                                <div className="grid grid-cols-7 gap-1">
+                                    {(() => {
+                                        const year = currentMonth.getFullYear();
+                                        const month = currentMonth.getMonth();
+                                        const firstDay = new Date(year, month, 1).getDay();
+                                        const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                        const days = [];
+
+                                        for (let i = 0; i < firstDay; i++) {
+                                            days.push(<div key={`empty-${i}`} className="p-2"></div>);
+                                        }
+
+                                        for (let day = 1; day <= daysInMonth; day++) {
+                                            const date = new Date(year, month, day);
+                                            date.setHours(0, 0, 0, 0);
+                                            const isSelected = fromDate && date.getTime() === fromDate.getTime();
+                                            const isInRange = fromDate && toDate && date >= fromDate && date <= toDate;
+                                            const isToday = date.toDateString() === new Date().toDateString();
+
+                                            days.push(
+                                                <button
+                                                    key={day}
+                                                    onClick={() => setFromDate(date)}
+                                                    className={`
+                                                        aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all duration-200
+                                                        ${isSelected ? 'bg-blue-600 text-white shadow-lg scale-105 font-bold' : ''}
+                                                        ${isInRange && !isSelected ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : ''}
+                                                        ${isToday && !isSelected ? 'ring-2 ring-blue-400 dark:ring-blue-500' : ''}
+                                                        ${!isSelected && !isInRange ? 'hover:bg-gray-100 dark:hover:bg-gray-700 hover:scale-105' : ''}
+                                                    `}
+                                                >
+                                                    {day}
+                                                </button>
+                                            );
+                                        }
+
+                                        return days;
+                                    })()}
+                                </div>
+                            </div>
+
+                            {/* To Calendar */}
+                            <div className="bg-gray-50 dark:bg-gray-800/50 rounded-lg p-3 shadow-sm">
+                                <div className="text-center mb-2 pb-2 border-b border-gray-200 dark:border-gray-700">
+                                    <span className="text-xs font-bold text-gray-600 dark:text-gray-400 uppercase tracking-wider">To</span>
+                                </div>
+                                <div className="flex items-center justify-between mb-2">
+                                    <button
+                                        onClick={() => {
+                                            const prev = new Date(currentMonth);
+                                            prev.setMonth(prev.getMonth() - 1);
+                                            setCurrentMonth(prev);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 hover:scale-110"
+                                    >
+                                        <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                    </button>
+                                    <span className="text-sm font-bold text-gray-700 dark:text-gray-300">
+                                        {(() => {
+                                            const nextMonth = new Date(currentMonth);
+                                            nextMonth.setMonth(nextMonth.getMonth() + 1);
+                                            return nextMonth.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+                                        })()}
+                                    </span>
+                                    <button
+                                        onClick={() => {
+                                            const next = new Date(currentMonth);
+                                            next.setMonth(next.getMonth() + 1);
+                                            setCurrentMonth(next);
+                                        }}
+                                        className="p-1.5 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-all duration-200 hover:scale-110"
+                                    >
+                                        <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+                                    </button>
+                                </div>
+
+                                {/* Day Headers */}
+                                <div className="grid grid-cols-7 gap-0.5 mb-1">
+                                    {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+                                        <div key={day} className="text-center text-[10px] font-semibold text-muted-foreground py-0.5">
+                                            {day}
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Calendar Days */}
+                                <div className="grid grid-cols-7 gap-1">
+                                    {(() => {
+                                        const nextMonthDate = new Date(currentMonth);
+                                        nextMonthDate.setMonth(nextMonthDate.getMonth() + 1);
+                                        const year = nextMonthDate.getFullYear();
+                                        const month = nextMonthDate.getMonth();
+                                        const firstDay = new Date(year, month, 1).getDay();
+                                        const daysInMonth = new Date(year, month + 1, 0).getDate();
+                                        const days = [];
+
+                                        for (let i = 0; i < firstDay; i++) {
+                                            days.push(<div key={`empty-${i}`} className="aspect-square"></div>);
+                                        }
+
+                                        for (let day = 1; day <= daysInMonth; day++) {
+                                            const date = new Date(year, month, day);
+                                            date.setHours(0, 0, 0, 0);
+                                            const isSelected = toDate && date.getTime() === toDate.getTime();
+                                            const isInRange = fromDate && toDate && date >= fromDate && date <= toDate;
+                                            const isToday = date.toDateString() === new Date().toDateString();
+
+                                            days.push(
+                                                <button
+                                                    key={day}
+                                                    onClick={() => setToDate(date)}
+                                                    className={`
+                                                        aspect-square flex items-center justify-center text-xs font-medium rounded-lg transition-all duration-200
+                                                        ${isSelected ? 'bg-blue-600 text-white shadow-lg scale-105 font-bold' : ''}
+                                                        ${isInRange && !isSelected ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300' : ''}
+                                                        ${isToday && !isSelected ? 'ring-2 ring-blue-400 dark:ring-blue-500' : ''}
+                                                        ${!isSelected && !isInRange ? 'hover:bg-gray-100 dark:hover:bg-gray-700 hover:scale-105' : ''}
+                                                    `}
+                                                >
+                                                    {day}
+                                                </button>
+                                            );
+                                        }
+
+                                        return days;
+                                    })()}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Close Button */}
+                        <button
+                            onClick={() => setShowCalendar(false)}
+                            className="mt-4 w-full px-4 py-1.5 bg-muted hover:bg-muted/80 rounded-lg text-sm font-semibold transition-colors"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </>
+            )}
+
+
+
+
+            {/* Ledger Summary Cards */}
+            {!loading && filteredLedgerEntries.length > 0 && (
+                <div className="grid grid-cols-2 gap-2 md:gap-3 p-2 md:p-3 pt-0">
+                    {(() => {
+                        // Calculate opening balance for the filtered period
+                        // Opening = First entry's net balance - first entry's debit + first entry's credit
+                        let openingVal = 0;
+                        if (filteredLedgerEntries.length > 0) {
+                            const firstEntry = filteredLedgerEntries[0];
+                            // If it's an actual "Opening Balance" entry, use its net balance directly
+                            if (firstEntry.particulars.toLowerCase().includes('opening balance')) {
+                                openingVal = parseFloat(firstEntry.netBalance);
+                            } else {
+                                // Calculate opening from first transaction: 
+                                // Opening Balance = Current Balance - Debit + Credit
+                                openingVal = parseFloat(firstEntry.netBalance) - parseFloat(firstEntry.debit || 0) + parseFloat(firstEntry.credit || 0);
+                            }
+                        }
+
+                        // Calculate Totals
+                        //  const totalDebit = filteredLedgerEntries.reduce((sum, item) => sum + parseFloat(item.debit || 0), 0);
+                        //  const totalCredit = filteredLedgerEntries.reduce((sum, item) => sum + parseFloat(item.credit || 0), 0);
+
+                        // Closing Balance is the last entry's balance
+                        const closingVal = filteredLedgerEntries.length > 0 ? parseFloat(filteredLedgerEntries[filteredLedgerEntries.length - 1].netBalance) : 0;
+
+                        return (
+                            <>
+                                <div className="bg-muted/30 p-2 md:p-3 rounded-lg border border-border/50">
+                                    <div className="text-[10px] md:text-xs text-muted-foreground font-medium mb-0.5">Opening Balance</div>
+                                    <div className={`text-sm md:text-base font-bold ${openingVal < 0 ? 'text-red-500' : 'text-foreground'}`}>
+                                        ₹{openingVal.toFixed(2)}
+                                    </div>
+                                </div>
+                                {/* <div className="bg-muted/30 p-3 md:p-4 rounded-xl border border-border/50">
+                                    <div className="text-xs text-muted-foreground font-medium mb-1">Total Debits</div>
+                                    <div className="text-base md:text-lg font-bold text-foreground">
+                                        ₹{totalDebit.toFixed(2)}
+                                    </div>
+                                </div>
+                                <div className="bg-muted/30 p-3 md:p-4 rounded-xl border border-border/50">
+                                    <div className="text-xs text-muted-foreground font-medium mb-1">Total Credits</div>
+                                    <div className="text-base md:text-lg font-bold text-foreground">
+                                        ₹{totalCredit.toFixed(2)}
+                                    </div>
+                                </div> */}
+                                <div className="bg-muted/30 p-2 md:p-3 rounded-lg border border-border/50">
+                                    <div className="text-[10px] md:text-xs text-muted-foreground font-medium mb-0.5">Closing Balance</div>
+                                    <div className={`text-sm md:text-base font-bold ${closingVal < 0 ? 'text-red-500' : 'text-emerald-500'}`}>
+                                        ₹{closingVal.toFixed(2)}
+                                    </div>
+                                </div>
+                            </>
+                        );
+                    })()}
+                </div>
+            )}
+
+
+            {/* Table Section - Responsive without scroll */}
+            <div className="border-t border-border">
+                <table className="w-full text-left border-collapse table-fixed">
                     <thead>
-                        <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs bg-background/50" style={{ minWidth: '320px' }}>Particulars</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Posting Date</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Cost Center</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Voucher Type</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Debit</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Credit</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Net Balance</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Asset</th>
+                        <tr className="bg-muted/30">
+                            <th className="py-3 px-3 text-muted-foreground font-semibold text-xs bg-background/50 w-[25%]">Particulars</th>
+                            <th className="py-3 px-2 text-muted-foreground font-semibold text-xs bg-background/50 w-[9%]">Date</th>
+                            <th className="py-3 px-2 text-muted-foreground font-semibold text-xs bg-background/50 w-[7%]">Cost Ctr</th>
+                            <th className="py-3 px-2 text-muted-foreground font-semibold text-xs bg-background/50 w-[11%]">Voucher</th>
+                            <th className="py-3 px-2 text-right text-muted-foreground font-semibold text-xs bg-background/50 w-[11%]">Debit</th>
+                            <th className="py-3 px-2 text-right text-muted-foreground font-semibold text-xs bg-background/50 w-[11%]">Credit</th>
+                            <th className="py-3 px-2 text-right text-muted-foreground font-semibold text-xs bg-background/50 w-[14%]">Balance</th>
+                            <th className="py-3 px-2 text-center text-muted-foreground font-semibold text-xs bg-background/50 w-[8%]">Asset</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredLedgerEntries.map((entry, i) => {
-                            const isOpeningOrClosing = entry.particulars.includes("Opening Balance") || entry.particulars.includes("Closing Balance");
-                            const netBalanceValue = parseFloat(entry.netBalance);
-                            const isNegative = netBalanceValue < 0;
-
-                            return (
-                                <tr key={i} className={`hover:bg-primary/5 transition-colors ${isOpeningOrClosing ? 'font-bold bg-muted/20' : ''}`}>
-                                    <td className={`py-5 px-6 font-medium ${isOpeningOrClosing ? 'text-foreground font-bold' : 'text-foreground/80'}`} style={{ minWidth: '320px', maxWidth: '400px' }}>
-                                        <div className="line-clamp-2" title={entry.particulars}>
-                                            {entry.particulars || "-"}
-                                        </div>
-                                    </td>
-                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{entry.postingDate || "-"}</td>
-                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{entry.costCenter || "-"}</td>
-                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{entry.voucherType || "-"}</td>
-                                    <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{entry.debit || "-"}</td>
-                                    <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{entry.credit || "-"}</td>
-                                    <td className={`py-5 px-6 text-right font-bold text-base whitespace-nowrap ${isNegative ? 'text-red-500' : 'text-emerald-500'}`}>
-                                        {entry.netBalance || "-"}
-                                    </td>
-                                    <td className="py-5 px-6 text-center whitespace-nowrap">
-                                        <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
-                                            {entry.asset || "-"}
-                                        </span>
-                                    </td>
-                                </tr>
-                            );
-                        })}
-                        {filteredLedgerEntries.length === 0 && (
+                        {loading ? (
+                            <tr>
+                                <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                        Loading ledger...
+                                    </div>
+                                </td>
+                            </tr>
+                        ) : filteredLedgerEntries.length === 0 ? (
                             <tr>
                                 <td colSpan={8} className="py-12 text-center text-muted-foreground">
                                     No ledger entries found for {filter === "All" ? "all assets" : filter}.
                                 </td>
                             </tr>
+                        ) : (
+                            currentEntries.map((entry, i) => {
+                                const isOpeningOrClosing = entry.particulars?.includes("Opening Balance") || entry.particulars?.includes("Closing Balance");
+                                const netBalanceValue = parseFloat(entry.netBalance);
+                                const isNegative = netBalanceValue < 0;
+
+                                return (
+                                    <tr key={i} className={`hover:bg-primary/5 transition-colors ${isOpeningOrClosing ? 'font-bold bg-muted/20' : ''}`}>
+                                        <td className={`py-4 px-3 font-medium ${isOpeningOrClosing ? 'text-foreground font-bold' : 'text-foreground/80'}`}>
+                                            <div className="line-clamp-2 text-xs" title={entry.particulars}>
+                                                {entry.particulars || "-"}
+                                            </div>
+                                        </td>
+                                        <td className="py-4 px-2 text-foreground/80 font-medium text-xs">{entry.postingDate || "-"}</td>
+                                        <td className="py-4 px-2 text-foreground/80 font-medium text-xs">{entry.costCenter || "-"}</td>
+                                        <td className="py-4 px-2 text-foreground/80 font-medium text-xs truncate" title={entry.voucherType}>{entry.voucherType || "-"}</td>
+                                        <td className="py-4 px-2 text-right text-foreground font-bold text-xs">{entry.debit || "-"}</td>
+                                        <td className="py-4 px-2 text-right text-foreground font-bold text-xs">{entry.credit || "-"}</td>
+                                        <td className={`py-4 px-2 text-right font-bold text-sm ${isNegative ? 'text-red-500' : 'text-emerald-500'}`}>
+                                            {entry.netBalance || "-"}
+                                        </td>
+                                        <td className="py-4 px-2 text-center text-xs text-muted-foreground font-medium">
+                                            {entry.asset || "-"}
+                                        </td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
             </div>
-        </div>
+
+            {/* Pagination Controls */}
+            {
+                filteredLedgerEntries.length > itemsPerPage && (
+                    <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                        {/* Previous Button */}
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ‹
+                        </button>
+
+                        {/* Page Numbers */}
+                        {(() => {
+                            const pages = [];
+                            const showEllipsisStart = currentPage > 3;
+                            const showEllipsisEnd = currentPage < totalPages - 2;
+
+                            // Always show first page
+                            pages.push(
+                                <button
+                                    key={1}
+                                    onClick={() => setCurrentPage(1)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    1
+                                </button>
+                            );
+
+                            // Show ellipsis if needed
+                            if (showEllipsisStart) {
+                                pages.push(
+                                    <span key="ellipsis-start" className="px-2 text-muted-foreground">
+                                        ...
+                                    </span>
+                                );
+                            }
+
+                            // Show pages around current page
+                            const startPage = Math.max(2, currentPage - 1);
+                            const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                            for (let i = startPage; i <= endPage; i++) {
+                                pages.push(
+                                    <button
+                                        key={i}
+                                        onClick={() => setCurrentPage(i)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {i}
+                                    </button>
+                                );
+                            }
+
+                            // Show ellipsis if needed
+                            if (showEllipsisEnd) {
+                                pages.push(
+                                    <span key="ellipsis-end" className="px-2 text-muted-foreground">
+                                        ...
+                                    </span>
+                                );
+                            }
+
+                            // Always show last page if more than 1 page
+                            if (totalPages > 1) {
+                                pages.push(
+                                    <button
+                                        key={totalPages}
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {totalPages}
+                                    </button>
+                                );
+                            }
+
+                            return pages;
+                        })()}
+
+                        {/* Next Button */}
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ›
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 
@@ -347,112 +1019,153 @@ const LedgerTab = () => {
 const HoldingsTab = () => {
     const [filter, setFilter] = useState("All");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const { data: clientData, isLoading: clientDataLoading } = useClientData();
+    const holdings = clientData.holdings;
+    const loading = clientDataLoading;
 
-    const holdings = [
-        {
-            symbol: "INFY",
-            name: "Infosys",
-            isin: "INE009A01021",
-            sector: "IT",
-            qtyAvailable: 100,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 80,
-            qtyPledgedMargin: 20,
-            qtyPledgedLoan: 0,
-            avgPrice: "1,250.00",
-            prevClosing: "1,540.00",
-            unrealizedPL: "34,800.00",
-            unrealizedPLPercent: "23.2",
-            type: "Equity"
-        },
-        {
-            symbol: "TCS",
-            name: "Tata Consultancy Services",
-            isin: "INE467B01029",
-            sector: "IT",
-            qtyAvailable: 50,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 50,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "3,200.00",
-            prevClosing: "3,580.00",
-            unrealizedPL: "19,000.00",
-            unrealizedPLPercent: "11.88",
-            type: "Equity"
-        },
-        {
-            symbol: "HDFCBANK",
-            name: "HDFC Bank",
-            isin: "INE040A01034",
-            sector: "Banking",
-            qtyAvailable: 200,
-            qtyDiscrepant: 10,
-            qtyLongTerm: 150,
-            qtyPledgedMargin: 40,
-            qtyPledgedLoan: 0,
-            avgPrice: "1,420.00",
-            prevClosing: "1,610.00",
-            unrealizedPL: "47,500.00",
-            unrealizedPLPercent: "13.38",
-            type: "Equity"
-        },
-        {
-            symbol: "AX123456",
-            name: "Axis Bluechip Fund",
-            isin: "INF846K01EW2",
-            sector: "Large Cap",
-            qtyAvailable: 1500,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 1500,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "42.50",
-            prevClosing: "48.20",
-            unrealizedPL: "8,550.00",
-            unrealizedPLPercent: "13.41",
-            type: "MF"
-        },
-        {
-            symbol: "GOI 7.26%",
-            name: "Government of India",
-            isin: "IN0020180034",
-            sector: "Government",
-            qtyAvailable: 5,
-            qtyDiscrepant: 0,
-            qtyLongTerm: 5,
-            qtyPledgedMargin: 0,
-            qtyPledgedLoan: 0,
-            avgPrice: "102.50",
-            prevClosing: "102.75",
-            unrealizedPL: "1,250.00",
-            unrealizedPLPercent: "0.24",
-            type: "Bond"
-        },
-    ];
+
 
     const filteredHoldings = filter === "All"
         ? holdings
         : holdings.filter(h => h.type === filter);
 
-    const handleDownload = () => {
-        const headers = ["Symbol", "ISIN", "Sector", "Quantity Available", "Quantity Discrepant", "Quantity Long Term", "Quantity Pledged (Margin)", "Quantity Pledged (Loan)", "Average Price", "Previous Closing Price", "Unrealized P&L", "Unrealized P&L %", "Asset"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredHoldings.map(row =>
-                [row.symbol, row.isin, row.sector, row.qtyAvailable, row.qtyDiscrepant, row.qtyLongTerm, row.qtyPledgedMargin, row.qtyPledgedLoan, row.avgPrice, row.prevClosing, row.unrealizedPL, row.unrealizedPLPercent, row.type].join(",")
-            )
-        ].join("\n");
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `holdings_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Reset page on filter change
+    useEffect(() => { setCurrentPage(1); }, [filter]);
+
+    const totalPages = Math.ceil(filteredHoldings.length / itemsPerPage);
+    const paginatedHoldings = filteredHoldings.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = clientData.clientCode || localStorage.getItem('clientId');
+
+        if (!clientId) {
+            console.error("Critical: Client ID missing for report export");
+            return;
+        }
+
+        let logoBase64 = "";
+        try {
+            const response = await fetch('/logo.png');
+            const blob = await response.blob();
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) { console.error("Logo load error", error); }
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+    <x:ExcelWorkbook>
+    <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+    <x:Name>Report</x:Name>
+    <x:WorksheetOptions>
+    <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+    </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <title>Holdings Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+        .header { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; gap: 5px; }
+        .logo-img { height: 80px; width: auto; object-fit: contain; }
+        .logo-text { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .client-info { margin-bottom: 30px; }
+        .client-info p { margin: 5px 0; color: #666; }
+        .client-id { font-weight: bold; color: #000; }
+        .report-title { font-size: 18px; font-weight: 600; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        thead { background: #f3f4f6; }
+        th { padding: 12px 8px; text-align: left; font-size: 10px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; white-space: nowrap; }
+        td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+        tr:hover { background: #f9fafb; }
+        .text-right { text-align: right !important; }
+        .text-center { text-align: center !important; }
+        .font-bold { font-weight: bold; }
+        .positive { color: #059669; }
+        .negative { color: #dc2626; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${window.location.origin}/logo.png" alt="Aionion Capital" class="logo-img" onerror="this.style.display='none'" />
+        <div class="logo-text">Aionion Capital Markets</div>
+    </div>
+    <div class="client-info">
+        <p><span class="client-id">Client ID:</span> ${clientId}</p>
+    </div>
+    <h2 class="report-title">Holdings Report - ${filter === "All" ? "All Assets" : filter} (${today})</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>ISIN</th>
+                <th class="text-center">POA Qty</th>
+                <th class="text-center">Non-POA Qty</th>
+                <th class="text-center">Qty Long Term</th>
+                <th class="text-right">Avg Price</th>
+                <th class="text-right">Prev Closing</th>
+                <th class="text-right">Unrealized P&L</th>
+                <th class="text-center">P&L %</th>
+                <th class="text-center">Asset</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${filteredHoldings.map(row => `
+                <tr>
+                    <td class="font-bold">${row.symbol}</td>
+                    <td style="font-size: 10px; color: #666;">${row.isin}</td>
+                    <td class="text-center">${row.poaQty}</td>
+                    <td class="text-center">${row.nonPoaQty}</td>
+                    <td class="text-center">${row.qtyLongTerm}</td>
+                    <td class="text-right">${row.avgPrice}</td>
+                    <td class="text-right">${row.prevClosing}</td>
+                    <td class="text-right font-bold positive">${row.unrealizedPL}</td>
+                    <td class="text-center positive">${row.unrealizedPLPercent}%</td>
+                    <td class="text-center">${row.type}</td>
+                </tr>
+            `).join('')}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) {
+                newWindow.onload = () => setTimeout(() => newWindow.print(), 250);
+            }
+        } else {
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `holdings_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
 
@@ -496,14 +1209,8 @@ const HoldingsTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
@@ -513,62 +1220,144 @@ const HoldingsTab = () => {
                 <table className="w-full text-left border-collapse">
                     <thead>
                         <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50" style={{ minWidth: '200px' }}>Symbol</th>
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">ISIN</th>
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Sector</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Available</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Discrepant</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Long Term</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Pledged (Margin)</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Pledged (Loan)</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Average Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Previous Closing Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unrealized P&L</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unrealized P&L %</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Asset</th>
+                            <th className="py-3 px-2 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50" style={{ minWidth: '150px' }}>Symbol</th>
+                            <th className="py-3 px-2 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">ISIN</th>
+                            <th className="py-3 px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">POA Qty</th>
+                            <th className="py-3 px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Non-POA</th>
+                            <th className="py-3 px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Long Term Qty</th>
+                            <th className="py-3 px-2 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Avg Price</th>
+                            <th className="py-3 px-2 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Prev Close</th>
+                            <th className="py-3 px-2 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unreal. P&L</th>
+                            <th className="py-3 px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">P&L %</th>
+                            <th className="py-3 px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Asset</th>
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredHoldings.map((h, i) => (
-                            <tr key={i} className="hover:bg-muted/30 transition-colors">
-                                <td className="py-5 px-6 whitespace-nowrap">
-                                    <div className="flex flex-col">
-                                        <span className="font-bold text-foreground text-base">{h.symbol}</span>
-                                        {h.name && <span className="text-xs text-muted-foreground font-medium mt-0.5">{h.name}</span>}
+                        {loading ? (
+                            <tr>
+                                <td colSpan={8} className="py-12 text-center text-muted-foreground">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                        Loading holdings...
                                     </div>
                                 </td>
-                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{h.isin}</td>
-                                <td className="py-5 px-6 text-muted-foreground font-medium whitespace-nowrap">{h.sector}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyAvailable}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyDiscrepant}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyLongTerm}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedMargin}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedLoan}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.avgPrice}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.prevClosing}</td>
-                                <td className="py-5 px-6 text-right text-emerald-500 font-bold text-base whitespace-nowrap">{h.unrealizedPL}</td>
-                                <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500">
-                                        {h.unrealizedPLPercent}%
-                                    </span>
-                                </td>
-                                <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
-                                        {h.type}
-                                    </span>
-                                </td>
                             </tr>
-                        ))}
-                        {filteredHoldings.length === 0 && (
+                        ) : filteredHoldings.length === 0 ? (
                             <tr>
-                                <td colSpan={13} className="py-12 text-center text-muted-foreground">
+                                <td colSpan={10} className="py-12 text-center text-muted-foreground">
                                     No holdings found for {filter === "All" ? "all assets" : filter}.
                                 </td>
                             </tr>
-                        )}
+                        ) : (
+                            paginatedHoldings.map((h, i) => (
+                                <tr key={i} className="hover:bg-muted/30 transition-colors">
+                                    <td className="py-3 px-2 whitespace-nowrap">
+                                        <div className="flex flex-col">
+                                            <span className="font-bold text-foreground text-sm">{h.symbol}</span>
+                                            {h.name && <span className="text-[10px] text-muted-foreground font-medium mt-0.5 max-w-[150px] truncate" title={h.name}>{h.name}</span>}
+                                        </div>
+                                    </td>
+                                    <td className="py-3 px-2 text-[10px] text-muted-foreground font-medium whitespace-nowrap">{h.isin}</td>
+                                    <td className="py-3 px-2 text-center text-muted-foreground font-medium whitespace-nowrap text-xs">{h.poaQty}</td>
+                                    <td className="py-3 px-2 text-center text-muted-foreground font-medium whitespace-nowrap text-xs">{h.nonPoaQty}</td>
+                                    <td className="py-3 px-2 text-center text-muted-foreground font-medium whitespace-nowrap text-xs">{h.qtyLongTerm}</td>
+                                    <td className="py-3 px-2 text-right text-muted-foreground font-medium whitespace-nowrap text-xs">{h.avgPrice}</td>
+                                    <td className="py-3 px-2 text-right text-muted-foreground font-medium whitespace-nowrap text-xs">{h.prevClosing}</td>
+                                    <td className={`py-3 px-2 text-right font-bold text-sm whitespace-nowrap ${parseFloat(h.unrealizedPL.replace(/,/g, '')) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{h.unrealizedPL}</td>
+                                    <td className={`py-3 px-2 text-center font-medium text-xs whitespace-nowrap ${parseFloat(h.unrealizedPLPercent) >= 0 ? 'text-emerald-500' : 'text-rose-500'}`}>{h.unrealizedPLPercent}%</td>
+                                    <td className="py-3 px-2 text-center text-muted-foreground font-medium whitespace-nowrap text-xs">
+                                        <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
+                                            {h.type}
+                                        </span>
+                                    </td>
+                                </tr>
+                            )))}
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {filteredHoldings.length > itemsPerPage && (
+                <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                    >
+                        ‹
+                    </button>
+
+                    {(() => {
+                        const pages = [];
+                        const showEllipsisStart = currentPage > 3;
+                        const showEllipsisEnd = currentPage < totalPages - 2;
+
+                        pages.push(
+                            <button
+                                key={1}
+                                onClick={() => setCurrentPage(1)}
+                                className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                    ? 'bg-emerald-500 text-white shadow-md'
+                                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                            >
+                                1
+                            </button>
+                        );
+
+                        if (showEllipsisStart) {
+                            pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                        }
+
+                        const startPage = Math.max(2, currentPage - 1);
+                        const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                        for (let i = startPage; i <= endPage; i++) {
+                            pages.push(
+                                <button
+                                    key={i}
+                                    onClick={() => setCurrentPage(i)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    {i}
+                                </button>
+                            );
+                        }
+
+                        if (showEllipsisEnd) {
+                            pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                        }
+
+                        if (totalPages > 1) {
+                            pages.push(
+                                <button
+                                    key={totalPages}
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    {totalPages}
+                                </button>
+                            );
+                        }
+
+                        return pages;
+                    })()}
+
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                    >
+                        ›
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
@@ -578,37 +1367,204 @@ const HoldingsTab = () => {
 const TransactionsTab = () => {
     const [filter, setFilter] = useState("All");
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+    const [transactions, setTransactions] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-    const transactions = [
-        { symbol: "INFY", isin: "INE009A01021", tradeDate: "12-Jul-2025", exchange: "NSE", segment: "Equity", series: "EQ", tradeType: "BUY", auction: "No", quantity: "100.00", price: "1,540.00", tradeId: "T123456", orderId: "O987654", executionTime: "12-Jul-2025 10:15:32", asset: "Equity" },
-        { symbol: "TCS", isin: "INE467B01029", tradeDate: "18-Sep-2025", exchange: "BSE", segment: "Equity", series: "EQ", tradeType: "SELL", auction: "No", quantity: "50", price: "3,580.00", tradeId: "T223344", orderId: "O776655", executionTime: "18-Sep-2025 14:42:10", asset: "Equity" },
-        { symbol: "HDFCBANK", isin: "INE040A01034", tradeDate: "15-Dec-2025", exchange: "NSE", segment: "Equity", series: "EQ", tradeType: "BUY", auction: "No", quantity: "150", price: "1,580.00", tradeId: "T345678", orderId: "O112233", executionTime: "15-Dec-2025 11:22:45", asset: "Equity" },
-        { symbol: "RELIANCE", isin: "INE002A01018", tradeDate: "20-Nov-2025", exchange: "NSE", segment: "Equity", series: "EQ", tradeType: "BUY", auction: "No", quantity: "75", price: "2,450.00", tradeId: "T456789", orderId: "O223344", executionTime: "20-Nov-2025 09:30:15", asset: "Equity" },
-        { symbol: "ICICIBANK", isin: "INE090A01021", tradeDate: "05-Oct-2025", exchange: "BSE", segment: "Equity", series: "EQ", tradeType: "SELL", auction: "No", quantity: "200", price: "920.00", tradeId: "T567890", orderId: "O334455", executionTime: "05-Oct-2025 14:55:30", asset: "Equity" },
-    ];
+    useEffect(() => {
+        const fetchTransactions = async () => {
+            try {
+                const response = await getPortfolioData();
+
+                // Check if fetch failed
+                if (response.success === false || !response.data || response.data.length === 0) {
+                    console.warn("No transaction data available");
+                    setTransactions([]);
+                    setLoading(false);
+                    return;
+                }
+
+                // Map API response to transaction format
+                const mappedTransactions = (response.data || []).map((item: any) => ({
+                    symbol: item.security,  // Stock symbol
+                    isin: item.isin || "-",  // ISIN code
+                    tradeDate: item.tradeDate ? new Date(item.tradeDate).toLocaleDateString('en-GB') : "-",  // Format: DD/MM/YYYY
+                    exchange: item.exchange || "-",  // Exchange (NSE/BSE/CASH)
+                    segment: "Equity",  // Segment type
+                    series: "EQ",  // Series
+                    tradeType: parseFloat(item.qty) > 0 ? "BUY" : "SELL",  // BUY if qty > 0, else SELL
+                    auction: "No",  // Auction flag
+                    quantity: Math.abs(parseFloat(item.qty || 0)).toFixed(2),  // Absolute quantity
+                    price: parseFloat(item.avgPrice || 0).toFixed(2),  // Price per share = RATE from API
+                    tradeId: "-",  // Will be fetched from another API
+                    orderId: "-",  // Will be fetched from another API
+                    executionTime: "-",  // Will be fetched from another API
+                    asset: "Equity"
+                }));
+
+                setTransactions(mappedTransactions);
+            } catch (error) {
+                console.error('Failed to fetch transactions:', error);
+                setTransactions([]);
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchTransactions();
+    }, []);
 
     const filteredTransactions = filter === "All"
         ? transactions
         : transactions.filter(t => t.asset === filter);
 
-    const handleDownload = () => {
-        const headers = ["Symbol", "ISIN", "Trade Date", "Exchange", "Segment", "Series", "Trade Type", "Auction", "Quantity", "Price", "Trade ID", "Order ID", "Order Execution Time"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredTransactions.map(row =>
-                [row.symbol, row.isin, row.tradeDate, row.exchange, row.segment, row.series, row.tradeType, row.auction, row.quantity, row.price, row.tradeId, row.orderId, row.executionTime].join(",")
-            )
-        ].join("\n");
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `transaction_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Reset page on filter change
+    useEffect(() => { setCurrentPage(1); }, [filter]);
+
+    const totalPages = Math.ceil(filteredTransactions.length / itemsPerPage);
+    const paginatedTransactions = filteredTransactions.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = localStorage.getItem('clientId') || 'CLIENT001';
+
+        let logoBase64 = "";
+        try {
+            const response = await fetch('/logo.png');
+            const blob = await response.blob();
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) { console.error("Logo load error", error); }
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+    <x:ExcelWorkbook>
+    <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+    <x:Name>Report</x:Name>
+    <x:WorksheetOptions>
+    <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+    </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <title>Transaction Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+        .header { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; gap: 5px; }
+        .logo-img { height: 80px; width: auto; object-fit: contain; }
+        .logo-text { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .client-info { margin-bottom: 30px; }
+        .client-info p { margin: 5px 0; color: #666; }
+        .client-id { font-weight: bold; color: #000; }
+        .report-title { font-size: 18px; font-weight: 600; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        thead { background: #f3f4f6; }
+        th { padding: 12px; text-align: left; font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; white-space: nowrap; }
+        td { padding: 12px; border-bottom: 1px solid #e5e7eb; font-size: 13px; }
+        tr:hover { background: #f9fafb; }
+        .text-right { text-align: right !important; }
+        .text-center { text-align: center !important; }
+        .font-bold { font-weight: bold; }
+        .buy-badge { background: #d1fae5; color: #059669; padding: 4px 12px; border-radius: 6px; font-weight: 600; font-size: 11px; display: inline-block; }
+        .sell-badge { background: #fee2e2; color: #dc2626; padding: 4px 12px; border-radius: 6px; font-weight: 600; font-size: 11px; display: inline-block; }
+        @media print {
+            body { padding: 20px; }
+            .no-print { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${window.location.origin}/logo.png" alt="Aionion Capital" class="logo-img" onerror="this.style.display='none'" />
+        <div class="logo-text">Aionion Capital Markets</div>
+    </div>
+    
+    <div class="client-info">
+        <p><span class="client-id">Client ID:</span> ${clientId}</p>
+    </div>
+    
+    <h2 class="report-title">Transaction History - ${filter === "All" ? "All Assets" : filter} (${today})</h2>
+    
+    <table>
+        <thead>
+            <tr>
+                <th>Symbol</th>
+                <th>ISIN</th>
+                <th>Trade Date</th>
+                <th>Exchange</th>
+                <th>Segment</th>
+                <th>Series</th>
+                <th>Trade Type</th>
+                <th>Auction</th>
+                <th class="text-right">Quantity</th>
+                <th class="text-right">Price</th>
+                <th>Trade ID</th>
+                <th>Order ID</th>
+                <th>Execution Time</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${filteredTransactions.map(row => `
+                <tr>
+                    <td class="font-bold">${row.symbol}</td>
+                    <td style="font-size: 11px; color: #666;">${row.isin}</td>
+                    <td>${row.tradeDate}</td>
+                    <td>${row.exchange}</td>
+                    <td>${row.segment}</td>
+                    <td>${row.series}</td>
+                    <td><span class="${row.tradeType === 'BUY' ? 'buy-badge' : 'sell-badge'}">${row.tradeType}</span></td>
+                    <td>${row.auction}</td>
+                    <td class="text-right font-bold">${row.quantity}</td>
+                    <td class="text-right font-bold">${row.price}</td>
+                    <td>${row.tradeId}</td>
+                    <td>${row.orderId}</td>
+                    <td>${row.executionTime}</td>
+                </tr>
+            `).join('')}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            // Open in new window and trigger print dialog for PDF
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) {
+                newWindow.onload = () => {
+                    setTimeout(() => newWindow.print(), 250);
+                };
+            }
+        } else {
+            // Download as Excel file
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `transaction_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
     return (
@@ -650,14 +1606,8 @@ const TransactionsTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
@@ -684,43 +1634,138 @@ const TransactionsTab = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredTransactions.map((txn, i) => (
-                            <tr key={i} className="hover:bg-primary/5 transition-colors">
-                                <td className="py-5 px-6 font-bold text-foreground text-base whitespace-nowrap">{txn.symbol}</td>
-                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{txn.isin}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.tradeDate}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.exchange}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.segment}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.series}</td>
-                                <td className="py-5 px-6 whitespace-nowrap">
-                                    <span className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-block min-w-[60px] text-center ${txn.tradeType === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                        {txn.tradeType}
-                                    </span>
-                                </td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.auction}</td>
-                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{txn.quantity}</td>
-                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{txn.price}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.tradeId}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.orderId}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.executionTime}</td>
-                                <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
-                                        {txn.asset}
-                                    </span>
+                        {loading ? (
+                            <tr>
+                                <td colSpan={14} className="py-12 text-center text-muted-foreground">
+                                    <div className="flex items-center justify-center gap-2">
+                                        <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></div>
+                                        Loading transactions...
+                                    </div>
                                 </td>
                             </tr>
-                        ))}
-                        {filteredTransactions.length === 0 && (
+                        ) : filteredTransactions.length === 0 ? (
                             <tr>
                                 <td colSpan={14} className="py-12 text-center text-muted-foreground">
                                     No transactions found for {filter === "All" ? "all assets" : filter}.
                                 </td>
                             </tr>
+                        ) : (
+                            paginatedTransactions.map((txn, i) => (
+                                <tr key={i} className="hover:bg-primary/5 transition-colors">
+                                    <td className="py-5 px-6 font-bold text-foreground text-base whitespace-nowrap">{txn.symbol}</td>
+                                    <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{txn.isin}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.tradeDate}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.exchange}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.segment}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.series}</td>
+                                    <td className="py-5 px-6 whitespace-nowrap">
+                                        <span className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-block min-w-[60px] text-center ${txn.tradeType === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
+                                            {txn.tradeType}
+                                        </span>
+                                    </td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.auction}</td>
+                                    <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{txn.quantity}</td>
+                                    <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{txn.price}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.tradeId}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.orderId}</td>
+                                    <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.executionTime}</td>
+                                    <td className="py-5 px-6 text-center whitespace-nowrap">
+                                        <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
+                                            {txn.asset}
+                                        </span>
+                                    </td>
+                                </tr>
+                            ))
                         )}
                     </tbody>
                 </table>
             </div>
-        </div>
+
+            {/* Pagination Controls */}
+            {
+                filteredTransactions.length > itemsPerPage && (
+                    <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ‹
+                        </button>
+
+                        {(() => {
+                            const pages = [];
+                            const showEllipsisStart = currentPage > 3;
+                            const showEllipsisEnd = currentPage < totalPages - 2;
+
+                            pages.push(
+                                <button
+                                    key={1}
+                                    onClick={() => setCurrentPage(1)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    1
+                                </button>
+                            );
+
+                            if (showEllipsisStart) {
+                                pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            const startPage = Math.max(2, currentPage - 1);
+                            const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                            for (let i = startPage; i <= endPage; i++) {
+                                pages.push(
+                                    <button
+                                        key={i}
+                                        onClick={() => setCurrentPage(i)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {i}
+                                    </button>
+                                );
+                            }
+
+                            if (showEllipsisEnd) {
+                                pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            if (totalPages > 1) {
+                                pages.push(
+                                    <button
+                                        key={totalPages}
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {totalPages}
+                                    </button>
+                                );
+                            }
+
+                            return pages;
+                        })()}
+
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ›
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 
@@ -786,25 +1831,118 @@ const XIRRTab = () => {
         ? xirrData
         : xirrData.filter(x => x.asset === filter);
 
-    const handleDownload = () => {
-        const headers = ["Symbol", "ISIN", "First Buy Date", "Last Transaction Date", "Total Buy Amount", "Total Sell Amount", "Current Value", "Net Gain/Loss", "Holding Period (Days)", "XIRR %"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredXirrData.map(row =>
-                [row.symbol, row.isin, row.firstBuyDate, row.lastTransactionDate, row.totalBuyAmount, row.totalSellAmount, row.currentValue, row.netGainLoss, row.holdingPeriod, row.xirrPercent].join(",")
-            ),
-            ["Total / Portfolio XIRR", "", "", "", totals.totalBuyAmount, totals.totalSellAmount, totals.currentValue, totals.netGainLoss, "", totals.xirrPercent].join(",")
-        ].join("\n");
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `xirr_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Reset page on filter change
+    useEffect(() => { setCurrentPage(1); }, [filter]);
+
+    const totalPages = Math.ceil(filteredXirrData.length / itemsPerPage);
+    const paginatedXirrData = filteredXirrData.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = localStorage.getItem('clientId') || 'CLIENT001';
+
+        let logoBase64 = "";
+        try {
+            const response = await fetch('/logo.png');
+            const blob = await response.blob();
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) { console.error("Logo load error", error); }
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+    <x:ExcelWorkbook>
+    <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+    <x:Name>Report</x:Name>
+    <x:WorksheetOptions>
+    <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+    </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <title>XIRR Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+        .header { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; gap: 5px; }
+        .logo-img { height: 80px; width: auto; object-fit: contain; }
+        .logo-text { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .client-info { margin-bottom: 30px; }
+        .client-info p { margin: 5px 0; color: #666; }
+        .client-id { font-weight: bold; color: #000; }
+        .report-title { font-size: 18px; font-weight: 600; margin: 20px 0; }
+        .summary { display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
+        .summary-card { padding: 15px 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #f9fafb; min-width: 150px; }
+        .summary-label { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+        .summary-value { font-size: 18px; font-weight: bold; }
+        .positive { color: #059669; }
+        .negative { color: #dc2626; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        thead { background: #f3f4f6; }
+        th { padding: 12px 8px; text-align: left; font-size: 10px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
+        td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+        .text-right { text-align: right !important; }
+        .font-bold { font-weight: bold; }
+        .total-row { background: #f3f4f6; font-weight: bold; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${window.location.origin}/logo.png" alt="Aionion Capital" class="logo-img" onerror="this.style.display='none'" />
+        <div class="logo-text">Aionion Capital Markets</div>
+    </div>
+    <div class="client-info"><p><span class="client-id">Client ID:</span> ${clientId}</p></div>
+    <h2 class="report-title">XIRR Report - ${filter === "All" ? "All Assets" : filter} (${today})</h2>
+    <div class="summary">
+        <div class="summary-card"><div class="summary-label">Total Invested</div><div class="summary-value">₹${totals.totalBuyAmount}</div></div>
+        <div class="summary-card"><div class="summary-label">Current Value</div><div class="summary-value">₹${totals.currentValue}</div></div>
+        <div class="summary-card"><div class="summary-label">Net Gain/Loss</div><div class="summary-value positive">₹${totals.netGainLoss}</div></div>
+        <div class="summary-card"><div class="summary-label">Portfolio XIRR</div><div class="summary-value positive">${totals.xirrPercent}%</div></div>
+    </div>
+    <table>
+        <thead><tr><th>Symbol</th><th>ISIN</th><th>First Buy</th><th>Last Txn</th><th class="text-right">Buy Amount</th><th class="text-right">Sell Amount</th><th class="text-right">Current Value</th><th class="text-right">Gain/Loss</th><th class="text-right">Days</th><th class="text-right">XIRR %</th></tr></thead>
+        <tbody>
+            ${filteredXirrData.map(row => `<tr><td class="font-bold">${row.symbol}</td><td style="font-size:10px;color:#666">${row.isin}</td><td>${row.firstBuyDate}</td><td>${row.lastTransactionDate}</td><td class="text-right">${row.totalBuyAmount}</td><td class="text-right">${row.totalSellAmount}</td><td class="text-right">${row.currentValue}</td><td class="text-right positive">${row.netGainLoss}</td><td class="text-right">${row.holdingPeriod}</td><td class="text-right font-bold positive">${row.xirrPercent}%</td></tr>`).join('')}
+            <tr class="total-row"><td colspan="4">Total / Portfolio XIRR</td><td class="text-right">${totals.totalBuyAmount}</td><td class="text-right">${totals.totalSellAmount}</td><td class="text-right">${totals.currentValue}</td><td class="text-right positive">${totals.netGainLoss}</td><td></td><td class="text-right positive">${totals.xirrPercent}%</td></tr>
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) { newWindow.onload = () => setTimeout(() => newWindow.print(), 250); }
+        } else {
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `xirr_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
     return (
@@ -846,14 +1984,8 @@ const XIRRTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
@@ -877,7 +2009,7 @@ const XIRRTab = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredXirrData.map((xirr, i) => {
+                        {paginatedXirrData.map((xirr, i) => {
                             const isLoss = xirr.netGainLoss.startsWith("-");
                             return (
                                 <tr key={i} className="hover:bg-primary/5 transition-colors">
@@ -931,6 +2063,89 @@ const XIRRTab = () => {
                     </tbody>
                 </table>
             </div>
+
+            {/* Pagination Controls */}
+            {filteredXirrData.length > itemsPerPage && (
+                <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                        disabled={currentPage === 1}
+                        className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                    >
+                        ‹
+                    </button>
+
+                    {(() => {
+                        const pages = [];
+                        const showEllipsisStart = currentPage > 3;
+                        const showEllipsisEnd = currentPage < totalPages - 2;
+
+                        pages.push(
+                            <button
+                                key={1}
+                                onClick={() => setCurrentPage(1)}
+                                className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                    ? 'bg-emerald-500 text-white shadow-md'
+                                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                            >
+                                1
+                            </button>
+                        );
+
+                        if (showEllipsisStart) {
+                            pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                        }
+
+                        const startPage = Math.max(2, currentPage - 1);
+                        const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                        for (let i = startPage; i <= endPage; i++) {
+                            pages.push(
+                                <button
+                                    key={i}
+                                    onClick={() => setCurrentPage(i)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    {i}
+                                </button>
+                            );
+                        }
+
+                        if (showEllipsisEnd) {
+                            pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                        }
+
+                        if (totalPages > 1) {
+                            pages.push(
+                                <button
+                                    key={totalPages}
+                                    onClick={() => setCurrentPage(totalPages)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    {totalPages}
+                                </button>
+                            );
+                        }
+
+                        return pages;
+                    })()}
+
+                    <button
+                        onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                        disabled={currentPage === totalPages}
+                        className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                    >
+                        ›
+                    </button>
+                </div>
+            )}
         </div>
     );
 };
@@ -1027,24 +2242,109 @@ const CapitalGainsTab = () => {
         ? capitalGains
         : capitalGains.filter(c => c.asset === filter);
 
-    const handleDownload = () => {
-        const headers = ["Symbol", "ISIN", "Exchange", "Buy Date", "Sell Date", "Quantity", "Buy Price", "Sell Price", "Buy Value", "Sell Value", "Holding Period (Days)", "Gain/Loss", "Gain Type", "Taxable Gain", "Exempt Gain", "Tax Rate", "Tax Amount"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredCapitalGains.map(row =>
-                [row.symbol, row.isin, row.exchange, row.buyDate, row.sellDate, row.quantity, row.buyPrice, row.sellPrice, row.buyValue, row.sellValue, row.holdingPeriod, row.gainLoss, row.gainType, row.taxableGain, row.exemptGain, row.taxRate, row.taxAmount].join(",")
-            )
-        ].join("\n");
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `capital_gains_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Reset page on filter change
+    useEffect(() => { setCurrentPage(1); }, [filter]);
+
+    const totalPages = Math.ceil(filteredCapitalGains.length / itemsPerPage);
+    const paginatedCapitalGains = filteredCapitalGains.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = localStorage.getItem('clientId') || 'CLIENT001';
+
+        let logoBase64 = "";
+        try {
+            const response = await fetch('/logo.png');
+            const blob = await response.blob();
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) { console.error("Logo load error", error); }
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+    <x:ExcelWorkbook>
+    <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+    <x:Name>Report</x:Name>
+    <x:WorksheetOptions>
+    <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+    </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <title>Capital Gains Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+        .header { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; gap: 5px; }
+        .logo-img { height: 80px; width: auto; object-fit: contain; }
+        .logo-text { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .client-info { margin-bottom: 30px; }
+        .client-info p { margin: 5px 0; color: #666; }
+        .client-id { font-weight: bold; color: #000; }
+        .report-title { font-size: 18px; font-weight: 600; margin: 20px 0; }
+        .positive { color: #059669; }
+        .negative { color: #dc2626; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        thead { background: #f3f4f6; }
+        th { padding: 10px 6px; text-align: left; font-size: 9px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
+        td { padding: 8px 6px; border-bottom: 1px solid #e5e7eb; font-size: 11px; }
+        .text-right { text-align: right !important; }
+        .text-center { text-align: center !important; }
+        .font-bold { font-weight: bold; }
+        .stcg { background: #fef3c7; color: #92400e; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+        .ltcg { background: #d1fae5; color: #059669; padding: 2px 8px; border-radius: 4px; font-size: 10px; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${window.location.origin}/logo.png" alt="Aionion Capital" class="logo-img" onerror="this.style.display='none'" />
+        <div class="logo-text">Aionion Capital Markets</div>
+    </div>
+    <div class="client-info"><p><span class="client-id">Client ID:</span> ${clientId}</p></div>
+    <h2 class="report-title">Capital Gains Report - ${filter === "All" ? "All Assets" : filter} (${today})</h2>
+    <table>
+        <thead><tr><th>Symbol</th><th>Exchange</th><th>Buy Date</th><th>Sell Date</th><th class="text-right">Qty</th><th class="text-right">Buy Price</th><th class="text-right">Sell Price</th><th class="text-right">Gain/Loss</th><th class="text-center">Type</th><th class="text-right">Taxable</th><th class="text-right">Tax Rate</th><th class="text-right">Tax</th></tr></thead>
+        <tbody>
+            ${filteredCapitalGains.map(row => `<tr><td class="font-bold">${row.symbol}</td><td>${row.exchange}</td><td>${row.buyDate}</td><td>${row.sellDate}</td><td class="text-right">${row.quantity}</td><td class="text-right">${row.buyPrice}</td><td class="text-right">${row.sellPrice}</td><td class="text-right font-bold positive">${row.gainLoss}</td><td class="text-center"><span class="${row.gainType === 'STCG' ? 'stcg' : 'ltcg'}">${row.gainType}</span></td><td class="text-right">${row.taxableGain}</td><td class="text-right">${row.taxRate}</td><td class="text-right font-bold">${row.taxAmount}</td></tr>`).join('')}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) { newWindow.onload = () => setTimeout(() => newWindow.print(), 250); }
+        } else {
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `capital_gains_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
     return (
@@ -1086,14 +2386,8 @@ const CapitalGainsTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
@@ -1124,7 +2418,7 @@ const CapitalGainsTab = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredCapitalGains.map((cg, i) => {
+                        {paginatedCapitalGains.map((cg, i) => {
                             const isLoss = cg.gainLoss.startsWith("-");
                             return (
                                 <tr key={i} className="hover:bg-primary/5 transition-colors">
@@ -1171,7 +2465,92 @@ const CapitalGainsTab = () => {
                     </tbody>
                 </table>
             </div>
-        </div>
+
+            {/* Pagination Controls */}
+            {
+                filteredCapitalGains.length > itemsPerPage && (
+                    <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ‹
+                        </button>
+
+                        {(() => {
+                            const pages = [];
+                            const showEllipsisStart = currentPage > 3;
+                            const showEllipsisEnd = currentPage < totalPages - 2;
+
+                            pages.push(
+                                <button
+                                    key={1}
+                                    onClick={() => setCurrentPage(1)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    1
+                                </button>
+                            );
+
+                            if (showEllipsisStart) {
+                                pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            const startPage = Math.max(2, currentPage - 1);
+                            const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                            for (let i = startPage; i <= endPage; i++) {
+                                pages.push(
+                                    <button
+                                        key={i}
+                                        onClick={() => setCurrentPage(i)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {i}
+                                    </button>
+                                );
+                            }
+
+                            if (showEllipsisEnd) {
+                                pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            if (totalPages > 1) {
+                                pages.push(
+                                    <button
+                                        key={totalPages}
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {totalPages}
+                                    </button>
+                                );
+                            }
+
+                            return pages;
+                        })()}
+
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ›
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 
@@ -1186,24 +2565,104 @@ const TaxPnLTab = () => {
         ? taxItems
         : taxItems.filter(t => t.type === filter);
 
-    const handleDownload = () => {
-        const headers = ["Date", "Security", "Type", "Income/Gain", "Tax Liability", "Section"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredTaxItems.map(row =>
-                [row.date, row.security, row.type, row.income, row.taxLiability, row.section].join(",")
-            )
-        ].join("\n");
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `tax_pnl_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Reset page on filter change
+    useEffect(() => { setCurrentPage(1); }, [filter]);
+
+    const totalPages = Math.ceil(filteredTaxItems.length / itemsPerPage);
+    const paginatedTaxItems = filteredTaxItems.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = localStorage.getItem('clientId') || 'CLIENT001';
+
+        let logoBase64 = "";
+        try {
+            const response = await fetch('/logo.png');
+            const blob = await response.blob();
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) { console.error("Logo load error", error); }
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+    <x:ExcelWorkbook>
+    <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+    <x:Name>Report</x:Name>
+    <x:WorksheetOptions>
+    <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+    </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <title>Tax P&L Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+        .header { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; gap: 5px; }
+        .logo-img { height: 80px; width: auto; object-fit: contain; }
+        .logo-text { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .client-info { margin-bottom: 30px; }
+        .client-info p { margin: 5px 0; color: #666; }
+        .client-id { font-weight: bold; color: #000; }
+        .report-title { font-size: 18px; font-weight: 600; margin: 20px 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        thead { background: #f3f4f6; }
+        th { padding: 12px 8px; text-align: left; font-size: 10px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
+        td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+        .text-right { text-align: right !important; }
+        .font-bold { font-weight: bold; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <img src="${window.location.origin}/logo.png" alt="Aionion Capital" class="logo-img" onerror="this.style.display='none'" />
+        <div class="logo-text">Aionion Capital Markets</div>
+    </div>
+    <div class="client-info"><p><span class="client-id">Client ID:</span> ${clientId}</p></div>
+    <h2 class="report-title">Tax P&L Report - ${filter === "All" ? "All Types" : filter} (${today})</h2>
+    <table>
+        <thead><tr><th>Date</th><th>Security</th><th>Type</th><th class="text-right">Income/Gain</th><th class="text-right">Tax Liability</th><th>Section</th></tr></thead>
+        <tbody>
+            ${filteredTaxItems.length === 0 ? '<tr><td colspan="6" style="text-align:center;padding:40px;color:#666;">No tax data available</td></tr>' : filteredTaxItems.map(row => `<tr><td>${row.date}</td><td class="font-bold">${row.security}</td><td>${row.type}</td><td class="text-right">${row.income}</td><td class="text-right font-bold">${row.taxLiability}</td><td>${row.section}</td></tr>`).join('')}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) { newWindow.onload = () => setTimeout(() => newWindow.print(), 250); }
+        } else {
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `tax_pnl_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
     return (
@@ -1245,14 +2704,8 @@ const TaxPnLTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
@@ -1272,7 +2725,7 @@ const TaxPnLTab = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredTaxItems.map((item, i) => (
+                        {paginatedTaxItems.map((item, i) => (
                             <tr key={i} className="hover:bg-primary/5 transition-colors">
                                 <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{item.date}</td>
                                 <td className="py-5 px-6 text-foreground font-bold whitespace-nowrap">{item.security}</td>
@@ -1304,7 +2757,92 @@ const TaxPnLTab = () => {
                     </tbody>
                 </table>
             </div>
-        </div>
+
+            {/* Pagination Controls */}
+            {
+                filteredTaxItems.length > itemsPerPage && (
+                    <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ‹
+                        </button>
+
+                        {(() => {
+                            const pages = [];
+                            const showEllipsisStart = currentPage > 3;
+                            const showEllipsisEnd = currentPage < totalPages - 2;
+
+                            pages.push(
+                                <button
+                                    key={1}
+                                    onClick={() => setCurrentPage(1)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    1
+                                </button>
+                            );
+
+                            if (showEllipsisStart) {
+                                pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            const startPage = Math.max(2, currentPage - 1);
+                            const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                            for (let i = startPage; i <= endPage; i++) {
+                                pages.push(
+                                    <button
+                                        key={i}
+                                        onClick={() => setCurrentPage(i)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {i}
+                                    </button>
+                                );
+                            }
+
+                            if (showEllipsisEnd) {
+                                pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            if (totalPages > 1) {
+                                pages.push(
+                                    <button
+                                        key={totalPages}
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {totalPages}
+                                    </button>
+                                );
+                            }
+
+                            return pages;
+                        })()}
+
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ›
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 
@@ -1385,24 +2923,116 @@ const DividendsTab = () => {
         ? dividends
         : dividends.filter(d => d.asset === filter);
 
-    const handleDownload = () => {
-        const headers = ["Period Type", "Income Date", "Asset Category", "Asset Name", "Income Type", "Gross Amount", "TDS Amount", "Net Amount"];
-        const csvContent = [
-            headers.join(","),
-            ...filteredDividends.map(row =>
-                [row.periodType, row.incomeDate, row.assetCategory, row.assetName, row.incomeType, row.grossAmount, row.tdsAmount, row.netAmount].join(",")
-            )
-        ].join("\n");
+    // Pagination
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
 
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        const url = URL.createObjectURL(blob);
-        link.setAttribute("href", url);
-        link.setAttribute("download", `dividends_report_${filter.toLowerCase()}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    // Reset page on filter change
+    useEffect(() => { setCurrentPage(1); }, [filter]);
+
+    const totalPages = Math.ceil(filteredDividends.length / itemsPerPage);
+    const paginatedDividends = filteredDividends.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    const handleDownload = async (format: ExportFormat) => {
+        const today = new Date().toLocaleDateString('en-GB');
+        const clientId = localStorage.getItem('clientId') || 'CLIENT001';
+
+        let logoBase64 = "";
+        try {
+            const response = await fetch('/logo.png');
+            const blob = await response.blob();
+            logoBase64 = await new Promise<string>((resolve) => {
+                const reader = new FileReader();
+                reader.onloadend = () => resolve(reader.result as string);
+                reader.readAsDataURL(blob);
+            });
+        } catch (error) { console.error("Logo load error", error); }
+
+        // Calculate totals
+        const totalGross = filteredDividends.reduce((sum, d) => sum + parseFloat(d.grossAmount), 0);
+        const totalTds = filteredDividends.reduce((sum, d) => sum + parseFloat(d.tdsAmount), 0);
+        const totalNet = filteredDividends.reduce((sum, d) => sum + parseFloat(d.netAmount), 0);
+
+        const htmlContent = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <!--[if gte mso 9]>
+    <xml>
+    <x:ExcelWorkbook>
+    <x:ExcelWorksheets>
+    <x:ExcelWorksheet>
+    <x:Name>Report</x:Name>
+    <x:WorksheetOptions>
+    <x:DisplayGridlines/>
+    </x:WorksheetOptions>
+    </x:ExcelWorksheet>
+    </x:ExcelWorksheets>
+    </x:ExcelWorkbook>
+    </xml>
+    <![endif]-->
+    <title>Dividends Report</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; padding: 40px; color: #333; }
+        .header { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 2px solid #e0e0e0; gap: 5px; }
+        .logo-img { height: 80px; width: auto; object-fit: contain; }
+        .logo-text { font-size: 24px; font-weight: bold; color: #1e40af; }
+        .client-info { margin-bottom: 30px; }
+        .client-info p { margin: 5px 0; color: #666; }
+        .client-id { font-weight: bold; color: #000; }
+        .report-title { font-size: 18px; font-weight: 600; margin: 20px 0; }
+        .summary { display: flex; gap: 20px; margin-bottom: 30px; flex-wrap: wrap; }
+        .summary-card { padding: 15px 20px; border: 1px solid #e0e0e0; border-radius: 8px; background: #f9fafb; min-width: 140px; }
+        .summary-label { font-size: 11px; color: #666; text-transform: uppercase; margin-bottom: 5px; }
+        .summary-value { font-size: 18px; font-weight: bold; }
+        .positive { color: #059669; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        thead { background: #f3f4f6; }
+        th { padding: 12px 8px; text-align: left; font-size: 10px; font-weight: 600; color: #666; text-transform: uppercase; border-bottom: 2px solid #e0e0e0; }
+        td { padding: 10px 8px; border-bottom: 1px solid #e5e7eb; font-size: 12px; }
+        .text-right { text-align: right !important; }
+        .font-bold { font-weight: bold; }
+        @media print { body { padding: 20px; } }
+    </style>
+</head>
+<body>
+    <div class="header"><div class="logo">Aionion Capital Markets</div></div>
+    <div class="client-info"><p><span class="client-id">Client ID:</span> ${clientId}</p></div>
+    <h2 class="report-title">Dividends & Interest Report - ${filter === "All" ? "All Assets" : filter} (${today})</h2>
+    <div class="summary">
+        <div class="summary-card"><div class="summary-label">Gross Amount</div><div class="summary-value">₹${totalGross.toFixed(2)}</div></div>
+        <div class="summary-card"><div class="summary-label">TDS Deducted</div><div class="summary-value">₹${totalTds.toFixed(2)}</div></div>
+        <div class="summary-card"><div class="summary-label">Net Amount</div><div class="summary-value positive">₹${totalNet.toFixed(2)}</div></div>
+    </div>
+    <table>
+        <thead><tr><th>Period</th><th>Date</th><th>Category</th><th>Asset Name</th><th>Type</th><th class="text-right">Gross</th><th class="text-right">TDS</th><th class="text-right">Net</th></tr></thead>
+        <tbody>
+            ${filteredDividends.map(row => `<tr><td>${row.periodType}</td><td>${row.incomeDate}</td><td>${row.assetCategory}</td><td class="font-bold">${row.assetName}</td><td>${row.incomeType}</td><td class="text-right">${row.grossAmount}</td><td class="text-right">${row.tdsAmount}</td><td class="text-right font-bold positive">${row.netAmount}</td></tr>`).join('')}
+        </tbody>
+    </table>
+</body>
+</html>`;
+
+        if (format === 'pdf') {
+            const blob = new Blob([htmlContent], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const newWindow = window.open(url, '_blank');
+            if (newWindow) { newWindow.onload = () => setTimeout(() => newWindow.print(), 250); }
+        } else {
+            const blob = new Blob([htmlContent], { type: 'application/vnd.ms-excel' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = `dividends_report_${filter.toLowerCase()}.xls`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(url);
+        }
     };
 
     return (
@@ -1444,14 +3074,8 @@ const DividendsTab = () => {
                             )}
                         </div>
 
-                        {/* Export Button */}
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Export Button with PDF/Excel dropdown */}
+                        <ExportButton onExport={handleDownload} />
                     </div>
                 </div>
             </div>
@@ -1473,7 +3097,7 @@ const DividendsTab = () => {
                         </tr>
                     </thead>
                     <tbody className="divide-y divide-border text-sm">
-                        {filteredDividends.map((div, i) => (
+                        {paginatedDividends.map((div, i) => (
                             <tr key={i} className="hover:bg-primary/5 transition-colors">
                                 <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{div.periodType || "-"}</td>
                                 <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{div.incomeDate || "-"}</td>
@@ -1500,7 +3124,92 @@ const DividendsTab = () => {
                     </tbody>
                 </table>
             </div>
-        </div>
+
+            {/* Pagination Controls */}
+            {
+                filteredDividends.length > itemsPerPage && (
+                    <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                            disabled={currentPage === 1}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ‹
+                        </button>
+
+                        {(() => {
+                            const pages = [];
+                            const showEllipsisStart = currentPage > 3;
+                            const showEllipsisEnd = currentPage < totalPages - 2;
+
+                            pages.push(
+                                <button
+                                    key={1}
+                                    onClick={() => setCurrentPage(1)}
+                                    className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                        ? 'bg-emerald-500 text-white shadow-md'
+                                        : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                        }`}
+                                >
+                                    1
+                                </button>
+                            );
+
+                            if (showEllipsisStart) {
+                                pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            const startPage = Math.max(2, currentPage - 1);
+                            const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                            for (let i = startPage; i <= endPage; i++) {
+                                pages.push(
+                                    <button
+                                        key={i}
+                                        onClick={() => setCurrentPage(i)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {i}
+                                    </button>
+                                );
+                            }
+
+                            if (showEllipsisEnd) {
+                                pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                            }
+
+                            if (totalPages > 1) {
+                                pages.push(
+                                    <button
+                                        key={totalPages}
+                                        onClick={() => setCurrentPage(totalPages)}
+                                        className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                            ? 'bg-emerald-500 text-white shadow-md'
+                                            : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                            }`}
+                                    >
+                                        {totalPages}
+                                    </button>
+                                );
+                            }
+
+                            return pages;
+                        })()}
+
+                        <button
+                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                            disabled={currentPage === totalPages}
+                            className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                        >
+                            ›
+                        </button>
+                    </div>
+                )
+            }
+        </div >
     );
 };
 

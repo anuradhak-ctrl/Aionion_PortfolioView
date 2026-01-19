@@ -42,6 +42,9 @@ const getCellValue = (row: any, col: string) => {
 };
 
 function Table({ columns, data }: { columns: string[]; data: any[] }) {
+    // Defensive check: ensure data is always an array
+    const safeData = Array.isArray(data) ? data : [];
+
     return (
         <div className="overflow-x-auto">
             <table className="w-full text-left rounded-xl overflow-hidden">
@@ -50,8 +53,8 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
                         {columns.map((col) => (
                             <th
                                 key={col}
-                                className="py-5 px-6 font-semibold text-muted-foreground text-xs bg-background/50 whitespace-nowrap"
-                                style={(col === "Symbol" || col === "Security") ? { minWidth: '200px' } : {}}
+                                className="py-3 px-2 font-semibold text-muted-foreground text-xs bg-background/50 whitespace-nowrap"
+                                style={(col === "Symbol" || col === "Security") ? { minWidth: '150px' } : {}}
                             >
                                 {col}
                             </th>
@@ -59,42 +62,43 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
                     </tr>
                 </thead>
                 <tbody className="divide-y divide-border/30">
-                    {data.map((row, i) => (
+                    {safeData.map((row, i) => (
                         <tr key={i} className="hover:bg-primary/5 transition-colors duration-150 group">
                             {columns.map((col) => {
                                 const val = getCellValue(row, col);
 
-                                if (col === "Security" || col === "Symbol") {
+                                // Special Rendering Logic
+                                if (col === "Symbol") {
                                     return (
-                                        <td key={col} className="py-5 px-6">
+                                        <td key={col} className="py-3 px-2">
                                             <div className="flex flex-col">
-                                                <span className="font-bold text-foreground text-base">{row.security || row.symbol}</span>
-                                                {row.name && <span className="text-xs text-muted-foreground font-medium mt-0.5">{row.name}</span>}
+                                                <span className="font-bold text-foreground text-sm">{row.security || row.symbol}</span>
+                                                {row.name && <span className="text-[10px] text-muted-foreground font-medium mt-0.5 max-w-[150px] truncate" title={row.name}>{row.name}</span>}
                                             </div>
                                         </td>
                                     );
                                 }
                                 if (col === "Scheme") {
                                     return (
-                                        <td key={col} className="py-5 px-6">
-                                            <span className="font-bold text-foreground text-base">{val}</span>
+                                        <td key={col} className="py-3 px-2">
+                                            <span className="font-bold text-foreground text-sm">{val}</span>
                                         </td>
                                     );
                                 }
                                 if (col === "P&L" || col === "Yield" || col === "Accrued") {
                                     const isPos = typeof val === 'string' ? !val.startsWith('-') : val > 0;
                                     return (
-                                        <td key={col} className={`py-5 px-6 font-medium ${isPos ? 'text-emerald-500' : 'text-red-500'}`}>
+                                        <td key={col} className={`py-3 px-2 text-sm font-medium ${isPos ? 'text-emerald-500' : 'text-red-500'}`}>
                                             {val}
                                         </td>
                                     );
                                 }
                                 if (col === "Bond") {
                                     return (
-                                        <td key={col} className="py-5 px-6">
+                                        <td key={col} className="py-3 px-2">
                                             <div className="flex flex-col">
-                                                <span className="font-bold text-foreground text-base">{row.bond}</span>
-                                                {row.isin && <span className="text-xs text-muted-foreground font-medium mt-0.5">{row.isin}</span>}
+                                                <span className="font-bold text-foreground text-sm">{row.bond}</span>
+                                                {row.isin && <span className="text-[10px] text-muted-foreground font-medium mt-0.5">{row.isin}</span>}
                                             </div>
                                         </td>
                                     );
@@ -102,8 +106,8 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
                                 if (col === "Return") {
                                     const isPos = typeof val === 'string' ? !val.startsWith('-') : val > 0;
                                     return (
-                                        <td key={col} className="py-5 px-6">
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${isPos ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
+                                        <td key={col} className="py-3 px-2">
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold ${isPos ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'
                                                 }`}>
                                                 {val}
                                             </span>
@@ -113,7 +117,7 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
 
                                 // Default Render
                                 return (
-                                    <td key={col} className="py-5 px-6 text-sm font-medium text-foreground/80">
+                                    <td key={col} className="py-3 px-2 text-xs font-medium text-foreground/80">
                                         {val}
                                     </td>
                                 );
@@ -128,24 +132,171 @@ function Table({ columns, data }: { columns: string[]; data: any[] }) {
 
 export default function ClientHoldings() {
     const [tab, setTab] = useState(0);
-    const [portfolioData, setPortfolioData] = useState<any[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [portfolioData, setPortfolioData] = useState<any[]>(() => {
+        // Initialize with cached data if available
+        const cached = localStorage.getItem('portfolioData');
+        return cached ? JSON.parse(cached) : [];
+    });
+    // Loading is true only if we have NO data
+    const [loading, setLoading] = useState(portfolioData.length === 0);
+    const [isRefetching, setIsRefetching] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    // Pagination State
+    const [currentPage, setCurrentPage] = useState(1);
+    const itemsPerPage = 10;
+
+    // Reset pagination when tab changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [tab]);
+
+    // Get current tab data
+    const getCurrentData = () => {
+        if (tab === 0) return portfolioData;
+        if (tab === 1) return mfData;
+        if (tab === 2) return bondData;
+        return [];
+    };
+
+    const currentData = getCurrentData();
+    const totalPages = Math.ceil(currentData.length / itemsPerPage);
+    const paginatedData = currentData.slice(
+        (currentPage - 1) * itemsPerPage,
+        currentPage * itemsPerPage
+    );
+
+    // Pagination Controls Component (reused across tabs)
+    const PaginationControls = () => {
+        if (currentData.length <= itemsPerPage) return null;
+
+        return (
+            <div className="flex items-center justify-center gap-1 p-4 border-t border-border bg-muted/20">
+                <button
+                    onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
+                    disabled={currentPage === 1}
+                    className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                >
+                    ‹
+                </button>
+
+                {(() => {
+                    const pages = [];
+                    const showEllipsisStart = currentPage > 3;
+                    const showEllipsisEnd = currentPage < totalPages - 2;
+
+                    pages.push(
+                        <button
+                            key={1}
+                            onClick={() => setCurrentPage(1)}
+                            className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === 1
+                                ? 'bg-emerald-500 text-white shadow-md'
+                                : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                }`}
+                        >
+                            1
+                        </button>
+                    );
+
+                    if (showEllipsisStart) {
+                        pages.push(<span key="ellipsis-start" className="px-2 text-muted-foreground">...</span>);
+                    }
+
+                    const startPage = Math.max(2, currentPage - 1);
+                    const endPage = Math.min(totalPages - 1, currentPage + 1);
+
+                    for (let i = startPage; i <= endPage; i++) {
+                        pages.push(
+                            <button
+                                key={i}
+                                onClick={() => setCurrentPage(i)}
+                                className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === i
+                                    ? 'bg-emerald-500 text-white shadow-md'
+                                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                            >
+                                {i}
+                            </button>
+                        );
+                    }
+
+                    if (showEllipsisEnd) {
+                        pages.push(<span key="ellipsis-end" className="px-2 text-muted-foreground">...</span>);
+                    }
+
+                    if (totalPages > 1) {
+                        pages.push(
+                            <button
+                                key={totalPages}
+                                onClick={() => setCurrentPage(totalPages)}
+                                className={`w-8 h-8 rounded-full text-xs font-medium transition-colors flex items-center justify-center ${currentPage === totalPages
+                                    ? 'bg-emerald-500 text-white shadow-md'
+                                    : 'bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-700'
+                                    }`}
+                            >
+                                {totalPages}
+                            </button>
+                        );
+                    }
+
+                    return pages;
+                })()}
+
+                <button
+                    onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
+                    disabled={currentPage === totalPages}
+                    className="w-8 h-8 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-sm font-medium disabled:opacity-30 disabled:cursor-not-allowed hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors flex items-center justify-center"
+                >
+                    ›
+                </button>
+            </div>
+        );
+    };
 
     useEffect(() => {
         const fetchData = async () => {
             try {
-                setLoading(true);
+                if (portfolioData.length === 0) setLoading(true);
+                else setIsRefetching(true);
+
                 const response = await getPortfolioData();
-                console.log("Portfolio Data:", response.data);
-                // Adjust this based on actual API response structure
-                // Assuming response.data is the array of holdings
-                setPortfolioData(response.data || []);
-            } catch (err) {
-                console.error("Failed to fetch portfolio:", err);
-                setError("Failed to load portfolio data. Please try again later.");
+                console.log("📦 Portfolio Response:", response);
+
+                // Handle Syncing State (Keep Loading)
+                if (response.status === 'syncing') {
+                    console.log("⏳ Portfolio is syncing, retrying in 2s...");
+                    setTimeout(fetchData, 2000);
+                    return;
+                }
+
+                console.log("📦 Response.data type:", typeof response.data);
+                console.log("📦 Response.data is Array:", Array.isArray(response.data));
+                console.log("📦 Response.success:", response.success);
+
+                // Check if fetch failed or data is not an array
+                if (response.success === false || !response.data || !Array.isArray(response.data) || response.data.length === 0) {
+                    console.warn("⚠️ No portfolio data available:", response.message);
+                    console.warn("⚠️ Response object:", JSON.stringify(response, null, 2));
+                    setPortfolioData([]);
+                    localStorage.removeItem('portfolioData'); // Clear invalid cache
+                    setError(response.message || "No portfolio data available.");
+                } else {
+                    const newData = response.data || [];
+                    console.log("✅ Setting portfolio data, length:", newData.length);
+                    setPortfolioData(newData);
+                    localStorage.setItem('portfolioData', JSON.stringify(newData));
+                    setError(null); // Clear any previous errors
+                }
+            } catch (err: any) {
+                console.error("❌ Failed to fetch portfolio:", err);
+                console.error("❌ Error message:", err.message);
+                console.error("❌ Error response:", err.response?.data);
+                setPortfolioData([]);
+                localStorage.removeItem('portfolioData'); // Clear cache on error
+                setError("Unable to connect to server. Please check your connection.");
             } finally {
                 setLoading(false);
+                setIsRefetching(false);
             }
         };
 
@@ -165,17 +316,32 @@ export default function ClientHoldings() {
     return (
         <DashboardLayout role="client">
             <div className="max-w-7xl mx-auto w-full p-8">
-                <h1 className="text-4xl font-display font-bold mb-6 text-foreground">Holdings</h1>
-                <div className="flex gap-4 mb-8">
-                    {TABS.map((t, i) => (
-                        <button
-                            key={t}
-                            className={`px-5 py-2 rounded-full font-medium text-base transition-all duration-200 ${tab === i ? 'bg-primary text-white shadow-lg' : 'bg-background text-foreground border border-border hover:bg-primary/10'}`}
-                            onClick={() => setTab(i)}
-                        >
-                            {t}
-                        </button>
-                    ))}
+                <div className="flex items-center gap-3 mb-6">
+                    <h1 className="text-4xl font-display font-bold text-foreground">Holdings</h1>
+                    {isRefetching && <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-primary mt-1"></div>}
+                </div>
+
+                {/* Error Message */}
+                {error && (
+                    <div className="mb-6 p-4 rounded-lg bg-red-500/10 border border-red-500/30 text-red-600">
+                        <div className="flex items-center gap-2">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                            <span className="font-medium">{error}</span>
+                        </div>
+                    </div>
+                )}
+
+                <div className="flex gap-4 mb-8">{TABS.map((t, i) => (
+                    <button
+                        key={t}
+                        className={`px-5 py-2 rounded-full font-medium text-base transition-all duration-200 ${tab === i ? 'bg-primary text-white shadow-lg' : 'bg-background text-foreground border border-border hover:bg-primary/10'}`}
+                        onClick={() => setTab(i)}
+                    >
+                        {t}
+                    </button>
+                ))}
                 </div>
                 <AnimatePresence mode="wait">
                     {tab === 0 && (
@@ -192,7 +358,8 @@ export default function ClientHoldings() {
                                 <h2 className="text-xl font-bold">Equity Holdings</h2>
                             </div>
                             {/* Table Section */}
-                            <Table columns={["Symbol", "Qty", "Avg Price", "CMP", "Value", "P&L", "Return"]} data={portfolioData} />
+                            <Table columns={["Symbol", "Qty", "Avg Price", "CMP", "Value", "P&L", "Return"]} data={paginatedData} />
+                            <PaginationControls />
                             {portfolioData.length === 0 && <p className="p-6 text-center text-muted-foreground">No equity holdings found.</p>}
                         </motion.div>
                     )}
@@ -210,7 +377,8 @@ export default function ClientHoldings() {
                                 <h2 className="text-xl font-bold">Mutual Fund Holdings</h2>
                             </div>
                             {/* Table Section */}
-                            <Table columns={["Scheme", "Folio", "Units", "Avg NAV", "Current NAV", "Value", "Return"]} data={mfData} />
+                            <Table columns={["Scheme", "Folio", "Units", "Avg NAV", "Current NAV", "Value", "Return"]} data={paginatedData} />
+                            <PaginationControls />
                         </motion.div>
                     )}
                     {tab === 2 && (
@@ -227,7 +395,8 @@ export default function ClientHoldings() {
                                 <h2 className="text-xl font-bold">Bond Holdings</h2>
                             </div>
                             {/* Table Section */}
-                            <Table columns={["Bond", "Qty", "Price", "Yield", "Value", "Accrued", "Maturity"]} data={bondData} />
+                            <Table columns={["Bond", "Qty", "Price", "Yield", "Value", "Accrued", "Maturity"]} data={paginatedData} />
+                            <PaginationControls />
                         </motion.div>
                     )}
                 </AnimatePresence>

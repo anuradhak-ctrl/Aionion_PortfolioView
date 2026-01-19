@@ -3,6 +3,7 @@ import BuildErrorPanel from "./components/BuildErrorPanel";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
+import { ClientDataProvider } from "@/contexts/ClientDataContext";
 import Login from "@/pages/Login";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ClientDashboard from "@/pages/ClientDashboard";
@@ -53,6 +54,7 @@ import AdminZones from "@/pages/admin/AdminZones";
 import AdminAnalytics from "@/pages/admin/AdminAnalytics";
 import AdminAdministration from "@/pages/admin/AdminAdministration";
 import AdminProfile from "@/pages/admin/AdminProfile";
+import UnderDevelopment from "@/components/UnderDevelopment";
 
 function Redirect({ to }: { to?: string }) {
   const [, setLocation] = useLocation();
@@ -289,6 +291,13 @@ function Router() {
         </ProtectedRoute>
       </Route>
 
+      {/* Under Development Page */}
+      <Route path="/under-development">
+        <ProtectedRoute>
+          <UnderDevelopment role="client" pageName="Feature" />
+        </ProtectedRoute>
+      </Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -300,7 +309,9 @@ function App() {
       <TooltipProvider>
         <BuildErrorPanel />
         <Toaster />
-        <Router />
+        <ClientDataProvider>
+          <Router />
+        </ClientDataProvider>
       </TooltipProvider>
     </AuthProvider>
   );

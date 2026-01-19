@@ -1,0 +1,20 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        - cd Frontend
+        - npm ci
+    build:
+      commands:
+        # Set environment variables for Vite build
+        - export VITE_API_BASE_URL=https://sj2rsd2k18.execute-api.ap-south-1.amazonaws.com/prod
+        - export VITE_USE_LOCAL_AUTH=false
+        - npm run build
+  artifacts:
+    baseDirectory: Frontend/dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - Frontend/node_modules/**/*

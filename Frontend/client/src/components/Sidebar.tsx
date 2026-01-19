@@ -1,4 +1,5 @@
 import { Link, useLocation } from "wouter";
+import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard,
   PieChart,
@@ -22,7 +23,17 @@ interface SidebarProps {
 }
 
 export function Sidebar({ activeRole = "client" }: SidebarProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+      setLocation('/login');
+    } catch (error) {
+      console.error('Logout failed:', error);
+    }
+  };
 
   const getNavItems = (role: string) => {
     let dashboardHref = "/";
@@ -104,22 +115,12 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
 
   const navItems = getNavItems(activeRole);
 
-  const getUserInfo = (role: string) => {
-    switch (role) {
-      case "rm":
-        return { name: "Rajesh Patel", role: "Relationship Manager", initials: "RP" };
-      case "bm":
-        return { name: "Sarah Wilson", role: "Branch Manager", initials: "SW" };
-      case "zm":
-        return { name: "Michael Chang", role: "Zonal Manager", initials: "MC" };
-      case "admin":
-        return { name: "Admin User", role: "Super Admin", initials: "AU" };
-      default:
-        return { name: "Rajesh Kumar", role: "Premium Client", initials: "RK" };
-    }
+  // Get real user info from context, fallback to defaults if needed
+  const userInfo = {
+    name: user?.username || user?.name || "User",
+    role: user?.role ? user.role.charAt(0).toUpperCase() + user.role.slice(1) : (activeRole === 'client' ? 'Client' : activeRole.toUpperCase()),
+    initials: (user?.username || user?.name || "U").substring(0, 2).toUpperCase()
   };
-
-  const userInfo = getUserInfo(activeRole);
 
   const NavContent = () => (
     <div className="flex flex-col h-full bg-white dark:bg-[#1e293b]">
@@ -177,7 +178,10 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
           </div>
         </div>
 
-        <button className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200">
+        <button
+          onClick={handleLogout}
+          className="flex items-center gap-3 px-4 py-3 w-full rounded-xl text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-200"
+        >
           <LogOut className="w-5 h-5" />
           <span className="font-medium text-sm">Logout</span>
         </button>
@@ -188,7 +192,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden lg:flex w-72 flex-col shrink-0 h-screen sticky top-0 bg-white dark:bg-[#1e293b] border-r border-border/50 z-30 transition-colors duration-300">
+      <aside className="hidden lg:flex w-56 flex-col shrink-0 h-screen sticky top-0 bg-white dark:bg-[#1e293b] border-r border-border/50 z-30 transition-colors duration-300">
         <NavContent />
       </aside>
 
@@ -200,7 +204,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
               <Menu className="w-6 h-6" />
             </button>
           </SheetTrigger>
-          <SheetContent side="left" className="p-0 w-72 bg-card border-r border-border">
+          <SheetContent side="left" className="p-0 w-56 bg-card border-r border-border">
             <NavContent />
           </SheetContent>
         </Sheet>

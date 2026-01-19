@@ -6,6 +6,8 @@ import cors from 'cors';
 // Import routes
 import userRoutes from './routes/user.routes.js';
 import localAuthRoutes from './routes/local-auth.routes.js';
+import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
+import adminRoutes from './routes/admin.routes.js';
 
 // Initialize express app
 const app = express();
@@ -21,11 +23,19 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging middleware
+// Request timing middleware
+// Request timing middleware
 app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-  console.log('Full URL:', req.url);
-  console.log('Base URL:', req.baseUrl);
-  console.log('Original URL:', req.originalUrl);
+  const start = Date.now();
+  // console.log(`➡️  ${req.method} ${req.url} started`); // Quiet mode
+
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    console.log(`⏱️  ${req.method} ${req.url} took ${duration}ms [${res.statusCode}]`);
+    if (duration > 1000) {
+      console.warn(`⚠️  Slow Request: ${duration}ms`);
+    }
+  });
   next();
 });
 
@@ -41,18 +51,19 @@ app.get('/health', (req, res) => {
 
 // API routes
 app.use('/api/users', userRoutes);
+app.use('/api/admin', adminRoutes);
 
-// Cognito authentication routes (works in both development and production)
-import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
-app.use('/api/auth', cognitoAuthRoutes);
-console.log('🔐 Cognito authentication routes enabled');
-
-// Local development auth (dummy users) - only if USE_LOCAL_AUTH is true
+// Auth Routes Configuration
 if (process.env.USE_LOCAL_AUTH === 'true') {
-  app.use('/api/local-auth', localAuthRoutes);
-  console.log('🔓 Local auth enabled - using dummy users');
+  // Use Local/Dummy Auth
+  app.use('/api/auth', localAuthRoutes);
+  console.log('🔓 Local auth enabled - mounted at /api/auth');
   console.log('📧 Test accounts: client@test.com, rm@test.com, bm@test.com, etc.');
   console.log('🔑 Password for all: test123');
+} else {
+  // Use Real Cognito Auth
+  app.use('/api/auth', cognitoAuthRoutes);
+  console.log('🔐 Cognito authentication routes enabled');
 }
 
 // Also mount routes at /prod for API Gateway
@@ -67,6 +78,7 @@ app.get('/prod/health', (req, res) => {
 
 app.use('/prod/api/users', userRoutes);
 app.use('/prod/api/auth', cognitoAuthRoutes);
+app.use('/prod/api/admin', adminRoutes);
 
 // 404 handler
 app.use((req, res) => {

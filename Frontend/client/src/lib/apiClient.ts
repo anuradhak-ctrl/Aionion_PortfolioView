@@ -13,7 +13,8 @@ const apiClient = axios.create({
 // Request interceptor to add auth token
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('accessToken');
+    // Use ID token (contains user attributes) instead of access token
+    const token = localStorage.getItem('idToken');
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -41,15 +42,15 @@ apiClient.interceptors.response.use(
             refreshToken,
           });
 
-          const { accessToken } = response.data;
-          localStorage.setItem('accessToken', accessToken);
+          const { idToken } = response.data;
+          localStorage.setItem('idToken', idToken);
 
-          originalRequest.headers.Authorization = `Bearer ${accessToken}`;
+          originalRequest.headers.Authorization = `Bearer ${idToken}`;
           return apiClient(originalRequest);
         }
       } catch (refreshError) {
         // Refresh failed, logout user
-        localStorage.removeItem('accessToken');
+        localStorage.removeItem('idToken');
         localStorage.removeItem('refreshToken');
         localStorage.removeItem('user');
         window.location.href = '/login';
