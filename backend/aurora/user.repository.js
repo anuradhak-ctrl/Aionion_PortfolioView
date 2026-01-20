@@ -34,7 +34,7 @@ export const findByClientId = async (clientId) => {
                client_code, employee_code, mfa_enabled,
                created_at, updated_at, last_login_at
         FROM users
-        WHERE client_id = $1
+        WHERE client_id ILIKE $1
     `;
     return queryOne(sql, [clientId]);
 };
@@ -58,7 +58,7 @@ export const findByCognitoSub = async (cognitoSub) => {
  * Get user by email
  */
 export const findByEmail = async (email) => {
-    const sql = `SELECT * FROM users WHERE email = $1`;
+    const sql = `SELECT * FROM users WHERE LOWER(email) = LOWER($1)`;
     return queryOne(sql, [email]);
 };
 

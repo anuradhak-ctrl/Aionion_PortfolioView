@@ -502,6 +502,18 @@ const executeFetchLedger = async ({ CLIENT_CODE, financialYear }) => {
         });
         console.log(`TechExcel_Ledger_API: ${(Date.now() - perfStart).toFixed(0)}ms`);
 
+        // Check for TechExcel API errors
+        if (response.data && response.data.Success === 'False') {
+            const errorCode = response.data['Error Code'];
+            const errorDesc = response.data['Error Description'];
+            console.error(`⚠️ TechExcel Ledger Error: ${errorCode} - ${errorDesc}`);
+
+            if (errorCode === 'Input_Value_Validation' && errorDesc.includes('Client Not Found')) {
+                throw new Error(`Client '${clientCode}' not found in TechExcel system`);
+            }
+            throw new Error(`TechExcel Error: ${errorDesc || errorCode || 'Unknown error'}`);
+        }
+
         if (response.data && response.data["Success Description"]) {
             const rawData = response.data["Success Description"];
 

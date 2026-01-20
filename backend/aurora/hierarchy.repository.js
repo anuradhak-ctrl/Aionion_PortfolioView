@@ -3,6 +3,7 @@
  * 
  * Handles: User hierarchy queries (subordinates, ancestors, access control)
  * Pure data access layer - no business logic
+ * Uses Recursive CTEs (Common Table Expressions) for hierarchy traversal
  */
 
 import { query, queryRows, queryOne } from './connection.js';
@@ -10,11 +11,11 @@ import { query, queryRows, queryOne } from './connection.js';
 // ==================== HIERARCHY QUERIES ====================
 
 /**
- * Get user's hierarchy path and level
+ * Get user's basic hierarchy info
  */
 export const getHierarchyInfo = async (userId) => {
     const sql = `
-        SELECT id, hierarchy_path, hierarchy_level, parent_id, role
+        SELECT id, parent_id, role
         FROM users
         WHERE id = $1
     `;
@@ -22,33 +23,29 @@ export const getHierarchyInfo = async (userId) => {
 };
 
 /**
- * Get all subordinates using hierarchy_path (fast)
+ * Get all subordinates (Recursive)
  */
 export const findSubordinates = async (userId, includeNested = true) => {
-    const user = await getHierarchyInfo(userId);
-
-    if (!user) {
-        throw new Error('User not found');
-    }
-
     if (includeNested) {
-        // All subordinates at any level
         const sql = `
-            SELECT id, client_id, email, name, role, status, 
-                   hierarchy_level, parent_id, branch_id, zone_id,
-                   created_at
-            FROM users
-            WHERE hierarchy_path LIKE $1
-              AND id != $2
-            ORDER BY hierarchy_level, name
+            WITH RECURSIVE subordinates AS (
+                SELECT id, client_id, email, name, role, status, parent_id, created_at, 1 as level
+                FROM users
+                WHERE parent_id = $1
+                
+                UNION ALL
+                
+                SELECT u.id, u.client_id, u.email, u.name, u.role, u.status, u.parent_id, u.created_at, s.level + 1
+                FROM users u
+                INNER JOIN subordinates s ON u.parent_id = s.id
+            )
+            SELECT * FROM subordinates ORDER BY level, name
         `;
-        return queryRows(sql, [user.hierarchy_path + '%', userId]);
+        return queryRows(sql, [userId]);
     } else {
         // Direct subordinates only
         const sql = `
-            SELECT id, client_id, email, name, role, status,
-                   hierarchy_level, parent_id, branch_id, zone_id,
-                   created_at
+            SELECT id, client_id, email, name, role, status, parent_id, created_at
             FROM users
             WHERE parent_id = $1
             ORDER BY role, name
@@ -58,51 +55,48 @@ export const findSubordinates = async (userId, includeNested = true) => {
 };
 
 /**
- * Count subordinates by role
+ * Count subordinates by role (Recursive)
  */
 export const countSubordinatesByRole = async (userId) => {
-    const user = await getHierarchyInfo(userId);
-
-    if (!user) {
-        throw new Error('User not found');
-    }
-
     const sql = `
+        WITH RECURSIVE subordinates AS (
+            SELECT id, role, parent_id
+            FROM users
+            WHERE parent_id = $1
+            
+            UNION ALL
+            
+            SELECT u.id, u.role, u.parent_id
+            FROM users u
+            INNER JOIN subordinates s ON u.parent_id = s.id
+        )
         SELECT role, COUNT(*)::int as count
-        FROM users
-        WHERE hierarchy_path LIKE $1
-          AND id != $2
+        FROM subordinates
         GROUP BY role
-        ORDER BY 
-            CASE role 
-                WHEN 'zonal_head' THEN 1
-                WHEN 'branch_manager' THEN 2
-                WHEN 'rm' THEN 3
-                WHEN 'client' THEN 4
-            END
+        ORDER BY role
     `;
-    return queryRows(sql, [user.hierarchy_path + '%', userId]);
+    return queryRows(sql, [userId]);
 };
 
 /**
- * Get all ancestors (managers up the chain)
+ * Get all ancestors (Recursive)
  */
 export const findAncestors = async (userId) => {
     const sql = `
         WITH RECURSIVE ancestors AS (
-            SELECT id, name, role, hierarchy_level, parent_id
+            SELECT id, name, role, parent_id, 1 as level
             FROM users
             WHERE id = (SELECT parent_id FROM users WHERE id = $1)
             
             UNION ALL
             
-            SELECT u.id, u.name, u.role, u.hierarchy_level, u.parent_id
+            SELECT u.id, u.name, u.role, u.parent_id, a.level + 1
             FROM users u
             INNER JOIN ancestors a ON u.id = a.parent_id
         )
-        SELECT id, name, role, hierarchy_level
+        SELECT id, name, role
         FROM ancestors
-        ORDER BY hierarchy_level
+        ORDER BY level
     `;
     return queryRows(sql, [userId]);
 };
@@ -127,30 +121,30 @@ export const findParent = async (userId) => {
  */
 export const canAccess = async (accessorId, targetId) => {
     // Same user - always allowed
-    if (accessorId === targetId) {
-        return true;
-    }
+    if (accessorId === targetId) return true;
 
+    // Check if accessor is Super Admin (no query needed if role logic is handled elsewhere, but safer to check DB)
     const accessor = await getHierarchyInfo(accessorId);
+    if (!accessor) return false;
+    if (accessor.role === 'super_admin') return true;
 
-    if (!accessor) {
-        return false;
-    }
-
-    // Super admin can access everyone
-    if (accessor.role === 'super_admin') {
-        return true;
-    }
-
-    // Check if target is a subordinate
-    const target = await getHierarchyInfo(targetId);
-
-    if (!target) {
-        return false;
-    }
-
-    // Target's path should start with accessor's path
-    return target.hierarchy_path.startsWith(accessor.hierarchy_path);
+    // Check if target is a descendant of accessor
+    const sql = `
+        WITH RECURSIVE subordinates AS (
+            SELECT id
+            FROM users
+            WHERE parent_id = $1
+            
+            UNION ALL
+            
+            SELECT u.id
+            FROM users u
+            INNER JOIN subordinates s ON u.parent_id = s.id
+        )
+        SELECT 1 FROM subordinates WHERE id = $2
+    `;
+    const result = await queryOne(sql, [accessorId, targetId]);
+    return !!result;
 };
 
 /**
@@ -158,10 +152,7 @@ export const canAccess = async (accessorId, targetId) => {
  */
 export const findAccessibleUsers = async (accessorId, role, filters = {}) => {
     const accessor = await getHierarchyInfo(accessorId);
-
-    if (!accessor) {
-        return [];
-    }
+    if (!accessor) return [];
 
     let sql, params;
 
@@ -173,12 +164,22 @@ export const findAccessibleUsers = async (accessorId, role, filters = {}) => {
         `;
         params = [];
     } else {
+        // Recursive CTE to get self + all descendants
         sql = `
-            SELECT id, client_id, email, name, role, status, branch_id, zone_id
-            FROM users
-            WHERE hierarchy_path LIKE $1
+            WITH RECURSIVE accessible_users AS (
+                SELECT id, client_id, email, name, role, status, branch_id, zone_id
+                FROM users
+                WHERE id = $1
+                
+                UNION ALL
+                
+                SELECT u.id, u.client_id, u.email, u.name, u.role, u.status, u.branch_id, u.zone_id
+                FROM users u
+                INNER JOIN accessible_users a ON u.parent_id = a.id
+            )
+            SELECT * FROM accessible_users WHERE 1=1
         `;
-        params = [accessor.hierarchy_path + '%'];
+        params = [accessorId];
     }
 
     let paramIndex = params.length + 1;
@@ -218,7 +219,7 @@ export const assignParent = async (userId, parentId) => {
         UPDATE users 
         SET parent_id = $1, updated_at = NOW()
         WHERE id = $2
-        RETURNING id, parent_id, hierarchy_path, hierarchy_level
+        RETURNING id, parent_id, role
     `;
     return queryOne(sql, [parentId, userId]);
 };
@@ -231,7 +232,7 @@ export const removeParent = async (userId) => {
         UPDATE users 
         SET parent_id = NULL, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, parent_id, hierarchy_path, hierarchy_level
+        RETURNING id, parent_id, role
     `;
     return queryOne(sql, [userId]);
 };

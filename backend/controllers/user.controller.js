@@ -2,8 +2,10 @@
 // ES MODULE VERSION — FINAL
 
 import * as techexcelService from '../services/techexcel.service.js';
+import userSyncService from '../auth/user-sync.service.js'; // Import user sync service
+import { userRepo } from '../aurora/index.js';
 
-// @desc Get current user info with dashboard and permissions
+
 export const getMe = (req, res) => {
   try {
     const dashboardMap = {
@@ -105,11 +107,13 @@ export const getAllUsers = async (req, res) => {
 // @desc Get clients (RM+)
 export const getClients = async (req, res) => {
   try {
+    const clients = await userSyncService.getAccessibleUsers(req.user.id, req.user.role, { role: 'client' });
+
     res.json({
-      message: 'Client list for RMs',
+      message: 'Client list',
       requestedBy: req.user.email,
       role: req.user.role,
-      clients: []
+      clients: clients
     });
   } catch (err) {
     console.error('getClients error:', err);
@@ -130,21 +134,37 @@ export const getUserById = async (req, res) => {
   }
 };
 
-// @desc Get client portfolio (Client only)
+// @desc Get client portfolio (Client only or RM viewing Client)
 export const getClientPortfolio = async (req, res) => {
   try {
-    // For now, assume username is the client code.
-    // In production, might need a generic way to map users to client codes.
-    // The username from Cognito is usually used.
-    const clientCode = req.user.username;
-    console.log('👤 Fetching portfolio for User:', req.user.username, 'Role:', req.user.role);
+    let clientCode = req.user.username;
 
-    if (!clientCode) {
-      return res.status(400).json({ message: 'Client code not found for user' });
+    // Allow RMs/Manager/Admins to view specific client portfolio
+    if (req.query.clientCode && req.user.role !== 'client') {
+      const requestedCode = req.query.clientCode;
+
+      // Find target user ID to check hierarchy access
+      const targetUser = await userRepo.findByClientId(requestedCode);
+      if (!targetUser) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      // Check permissions
+      if (req.user.role !== 'super_admin') {
+        const canAccess = await userSyncService.canAccessUser(req.user.id, targetUser.id);
+        if (!canAccess) {
+          return res.status(403).json({ message: 'Access denied to this client' });
+        }
+      }
+
+      clientCode = requestedCode;
     }
 
-    // Check if client requested fresh data (bypass cache)
-    // const bypassCache = req.query.fresh === 'true'; // DEPRECATED: GET /portfolio is READ-ONLY
+    console.log('👤 Fetching portfolio for:', clientCode, 'Requester:', req.user.username);
+
+    if (!clientCode) {
+      return res.status(400).json({ message: 'Client code not found' });
+    }
 
     // 1. Try Read-Only Cache
     const cachedData = await techexcelService.getCachedPortfolio(clientCode);
@@ -162,8 +182,6 @@ export const getClientPortfolio = async (req, res) => {
 
     // 2. Cache Miss (First Load)
     console.log(`⚠️ Pure Cache Miss for ${clientCode}. Waiting for client trigger.`);
-
-    // PURE READ ENDPOINT: DO NOT TRIGGER TECHEXCEL HERE.
 
     // Return empty state (Frontend should handle this gracefuly, e.g. show "Updating...")
     return res.json({
@@ -190,11 +208,33 @@ export const getClientPortfolio = async (req, res) => {
   }
 };
 
-// @desc Refresh client portfolio (Explicit Write Action)
+// @desc Refresh client portfolio (Explicit Write Action) - Supports RMs refreshing client data
 export const refreshClientPortfolio = async (req, res) => {
   try {
-    const clientCode = req.user.username;
-    console.log('🔄 Explicit Portfolio Refresh for:', clientCode);
+    let clientCode = req.user.username;
+
+    // Allow RMs/Manager/Admins to refresh specific client portfolio
+    if (req.query.clientCode && req.user.role !== 'client') {
+      const requestedCode = req.query.clientCode;
+
+      // Find target user ID to check hierarchy access
+      const targetUser = await userRepo.findByClientId(requestedCode);
+      if (!targetUser) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      // Check permissions
+      if (req.user.role !== 'super_admin') {
+        const canAccess = await userSyncService.canAccessUser(req.user.id, targetUser.id);
+        if (!canAccess) {
+          return res.status(403).json({ message: 'Access denied to this client' });
+        }
+      }
+
+      clientCode = requestedCode;
+    }
+
+    console.log('🔄 Explicit Portfolio Refresh for:', clientCode, 'Requester:', req.user.username);
 
     const result = await techexcelService.fetchClientPortfolio({
       CLIENT_CODE: clientCode,
@@ -210,19 +250,41 @@ export const refreshClientPortfolio = async (req, res) => {
     });
   } catch (err) {
     console.error('refreshClientPortfolio error:', err);
-    res.status(500).json({ message: 'Refresh failed' });
+    res.status(500).json({ message: 'Refresh failed', error: process.env.NODE_ENV === 'development' ? err.message : undefined });
   }
 };
 
-// @desc Get client ledger/account statement (Client only)
+// @desc Get client ledger/account statement (Client only or RM viewing Client)
 export const getLedger = async (req, res) => {
   try {
-    const clientCode = req.user.username;
+    let clientCode = req.user.username;
+
+    // Allow RMs/Manager/Admins to view specific client ledger
+    if (req.query.clientCode && req.user.role !== 'client') {
+      const requestedCode = req.query.clientCode;
+
+      // Find target user ID to check hierarchy access
+      const targetUser = await userRepo.findByClientId(requestedCode);
+      if (!targetUser) {
+        return res.status(404).json({ message: 'Client not found' });
+      }
+
+      // Check permissions
+      if (req.user.role !== 'super_admin') {
+        const canAccess = await userSyncService.canAccessUser(req.user.id, targetUser.id);
+        if (!canAccess) {
+          return res.status(403).json({ message: 'Access denied to this client' });
+        }
+      }
+
+      clientCode = requestedCode;
+    }
+
     const financialYear = req.query.financialYear; // e.g., "2025-26"
-    console.log('📄 Fetching ledger for User:', req.user.username, 'Role:', req.user.role, 'FY:', financialYear || 'current');
+    console.log('📄 Fetching ledger for:', clientCode, 'Requester:', req.user.username, 'FY:', financialYear || 'current');
 
     if (!clientCode) {
-      return res.status(400).json({ message: 'Client code not found for user' });
+      return res.status(400).json({ message: 'Client code not found' });
     }
 
     const ledgerData = await techexcelService.fetchLedger({
@@ -237,8 +299,15 @@ export const getLedger = async (req, res) => {
     });
   } catch (err) {
     console.error('getLedger error:', err);
+
+    // Provide specific error message
+    const errorMessage = err.message && err.message.includes('not found in TechExcel')
+      ? err.message
+      : 'Failed to fetch ledger data';
+
     res.status(500).json({
-      message: 'Failed to fetch ledger data',
+      success: false,
+      message: errorMessage,
       error: process.env.NODE_ENV === 'development' ? err.message : undefined
     });
   }

@@ -66,6 +66,13 @@ export const syncCognitoUserToAurora = async (cognitoPayload, userType = 'client
             existingUser = await userRepo.findByClientId(username);
         }
 
+        if (!existingUser && email) {
+            existingUser = await userRepo.findByEmail(email);
+            if (existingUser) {
+                console.log(`📝 found user by email: ${email} (client_id: ${existingUser.client_id})`);
+            }
+        }
+
         if (existingUser) {
             // Update existing user
             console.log(`📝 Existing user found: ${existingUser.id}`);
@@ -80,6 +87,19 @@ export const syncCognitoUserToAurora = async (cognitoPayload, userType = 'client
 
             // Log the login
             await auditRepo.logLogin(existingUser.id);
+
+            // Sync Role from Cognito if different (Auto-Update on Login)
+            // SAFETY CHECK: Do NOT downgrade privileged users to 'client' automatically
+            // This prevents accidental loss of admin access if Cognito groups are missing
+            const sensitiveRoles = ['super_admin', 'director', 'zonal_head', 'branch_manager'];
+            const isDowngrade = role === 'client' && sensitiveRoles.includes(existingUser.role);
+
+            if (role && existingUser.role !== role && !isDowngrade) {
+                console.log(`📝 Updating user role from ${existingUser.role} to ${role} based on Cognito Group`);
+                await userRepo.update(existingUser.id, { role });
+            } else if (isDowngrade) {
+                console.warn(`🛡️ Skipped role update for ${existingUser.client_id}: Prevented downgrade from ${existingUser.role} to ${role}`);
+            }
 
             return await userRepo.findById(existingUser.id);
         }

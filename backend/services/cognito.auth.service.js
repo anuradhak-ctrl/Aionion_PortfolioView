@@ -3,15 +3,20 @@ import {
   InitiateAuthCommand,
   AssociateSoftwareTokenCommand,
   VerifySoftwareTokenCommand,
-  RespondToAuthChallengeCommand
+  RespondToAuthChallengeCommand,
+  AdminCreateUserCommand,
+  AdminAddUserToGroupCommand,
+  ListUsersCommand,
+  AdminListGroupsForUserCommand
 } from "@aws-sdk/client-cognito-identity-provider";
 import QRCode from 'qrcode';
-// DISABLED: Aurora database sync - using Cognito-only mode
-// import { syncCognitoUserToAurora } from '../auth/user-sync.service.js';
+import { syncCognitoUserToAurora } from '../auth/user-sync.service.js';
 
 const client = new CognitoIdentityProviderClient({
   region: process.env.COGNITO_REGION || "ap-south-1"
 });
+
+
 
 /**
  * STEP 5.1 — Main Login Flow
@@ -80,18 +85,17 @@ export const loginWithPassword = async (req, res) => {
         amr: payload.amr || [] // Authentication Methods Reference (pwd, mfa, etc.)
       };
 
-      // DISABLED: Aurora database sync - using Cognito-only mode
-      // let auroraUser = null;
-      // try {
-      //   auroraUser = await syncCognitoUserToAurora(payload, validUserType);
-      //   user.auroraId = auroraUser.id;
-      //   user.dbRole = auroraUser.role;
-      //   user.status = auroraUser.status;
-      //   console.log(`✅ SUCCESS: ${user.username} (${user.role}) synced to Aurora ID: ${auroraUser.id}`);
-      // } catch (syncError) {
-      //   console.error('⚠️ Aurora sync failed (non-blocking):', syncError.message);
-      //   // Don't block login if sync fails - user can still use the app
-      // }
+      let auroraUser = null;
+      try {
+        auroraUser = await syncCognitoUserToAurora(payload, validUserType);
+        user.auroraId = auroraUser.id;
+        user.dbRole = auroraUser.role;
+        user.status = auroraUser.status;
+        console.log(`✅ SUCCESS: ${user.username} (${user.role}) synced to Aurora ID: ${auroraUser.id}`);
+      } catch (syncError) {
+        console.error('⚠️ Aurora sync failed (non-blocking):', syncError.message);
+        // Don't block login if sync fails - user can still use the app
+      }
 
       console.log(`✅ SUCCESS: ${user.username} (${user.role}) - AMR: ${JSON.stringify(user.amr)}`);
 
@@ -104,13 +108,12 @@ export const loginWithPassword = async (req, res) => {
           refreshToken: RefreshToken
         },
         user,
-        // DISABLED: Aurora user data
-        // auroraUser: auroraUser ? {
-        //   id: auroraUser.id,
-        //   role: auroraUser.role,
-        //   status: auroraUser.status,
-        //   hierarchy_level: auroraUser.hierarchy_level
-        // } : null
+        auroraUser: auroraUser ? {
+          id: auroraUser.id,
+          role: auroraUser.role,
+          status: auroraUser.status,
+          hierarchy_level: auroraUser.hierarchy_level
+        } : null
       });
     }
 
@@ -335,16 +338,15 @@ export const verifyMfaChallenge = async (req, res) => {
         amr: payload.amr || []
       };
 
-      // DISABLED: Aurora database sync - using Cognito-only mode
-      // let auroraUser = null;
-      // try {
-      //   auroraUser = await syncCognitoUserToAurora(payload, userType);
-      //   user.auroraId = auroraUser.id;
-      //   user.dbRole = auroraUser.role;
-      //   console.log(`✅ MFA verified: ${user.username} synced to Aurora ID: ${auroraUser.id}`);
-      // } catch (syncError) {
-      //   console.error('⚠️ Aurora sync failed (non-blocking):', syncError.message);
-      // }
+      let auroraUser = null;
+      try {
+        auroraUser = await syncCognitoUserToAurora(payload, userType);
+        user.auroraId = auroraUser.id;
+        user.dbRole = auroraUser.role;
+        console.log(`✅ MFA verified: ${user.username} synced to Aurora ID: ${auroraUser.id}`);
+      } catch (syncError) {
+        console.error('⚠️ Aurora sync failed (non-blocking):', syncError.message);
+      }
 
       console.log(`✅ MFA verified: ${user.username} - AMR: ${JSON.stringify(user.amr)}`);
 
@@ -357,12 +359,11 @@ export const verifyMfaChallenge = async (req, res) => {
           refreshToken: RefreshToken
         },
         user,
-        // DISABLED: Aurora user data
-        // auroraUser: auroraUser ? {
-        //   id: auroraUser.id,
-        //   role: auroraUser.role,
-        //   status: auroraUser.status
-        // } : null
+        auroraUser: auroraUser ? {
+          id: auroraUser.id,
+          role: auroraUser.role,
+          status: auroraUser.status
+        } : null
       });
     }
 
@@ -545,5 +546,147 @@ export const refreshToken = async (req, res) => {
       message: 'Failed to refresh token',
       error: process.env.NODE_ENV === 'development' ? error.message : undefined
     });
+  }
+};
+/**
+ * Create user in Cognito (Admin action)
+ */
+export const adminCreateUser = async (userData) => {
+  const { username, email, name, role, userType = 'client', temporaryPassword } = userData;
+
+  // Choose user pool based on user type (Assuming same pool for now, but different Client IDs)
+  // For AdminCreateUser, we need UserPoolId, not ClientId.
+  // We need to fetch UserPoolId from env or config. 
+  // IMPORTANT: The current env seems to only list Client IDs.
+  // We'll assume COGNITO_USER_POOL_ID is set.
+  const userPoolId = process.env.COGNITO_USER_POOL_ID?.trim();
+
+  if (!userPoolId) {
+    throw new Error('COGNITO_USER_POOL_ID is not configured');
+  }
+
+  console.log(`👤 Creating Cognito user: ${username} (${email}) in pool ${userPoolId} (region: ${process.env.COGNITO_REGION})`);
+
+  try {
+    const command = new AdminCreateUserCommand({
+      UserPoolId: userPoolId,
+      Username: username,
+      UserAttributes: [
+        { Name: 'email', Value: email },
+        { Name: 'name', Value: name },
+        { Name: 'email_verified', Value: 'true' },
+        // { Name: 'phone_number', Value: userData.phone } // Add if phone exists
+      ],
+      TemporaryPassword: temporaryPassword || 'TempPass123!',
+      MessageAction: 'SUPPRESS', // Don't send welcome email yet, or 'RESEND'
+      DesiredDeliveryMediums: ['EMAIL']
+    });
+
+    const response = await client.send(command);
+
+    // Add to group based on role
+    const groupName = role === 'super_admin' ? 'Admins' :
+      role === 'zonal_head' ? 'ZonalHeads' :
+        role === 'branch_manager' ? 'BranchManagers' :
+          role === 'rm' ? 'RMs' : 'Clients';
+
+    // Attempt to add to group
+    try {
+      const groupCommand = new AdminAddUserToGroupCommand({
+        UserPoolId: userPoolId,
+        Username: username,
+        GroupName: groupName
+      });
+      await client.send(groupCommand);
+      console.log(`✅ User added to group: ${groupName}`);
+    } catch (groupError) {
+      console.warn(`⚠️ Failed to add user to group ${groupName}:`, groupError.message);
+      // Don't fail the whole creation
+    }
+
+    return {
+      success: true,
+      cognitoSub: response.User.Username, // This is the SUB
+      user: response.User
+    };
+
+  } catch (error) {
+    console.error('❌ Cognito Create User Failed:', error);
+    throw error;
+  }
+};
+/**
+ * Sync ALL users from Cognito to Aurora
+ */
+export const syncAllUsersFromCognito = async () => {
+  const userPoolId = process.env.COGNITO_USER_POOL_ID?.trim();
+  if (!userPoolId) throw new Error('COGNITO_USER_POOL_ID not set');
+
+  console.log(`🔄 Starting full sync from Cognito Pool: ${userPoolId}`);
+
+  const results = { synced: 0, failed: 0, total: 0 };
+  let nextToken = null;
+
+  try {
+    do {
+      const command = new ListUsersCommand({
+        UserPoolId: userPoolId,
+        Limit: 60,
+        PaginationToken: nextToken
+      });
+
+      const response = await client.send(command);
+      nextToken = response.PaginationToken;
+
+      for (const cogUser of response.Users) {
+        results.total++;
+        try {
+          // Fetch Groups for the user to determine Role correctly
+          // ListUsers does NOT return groups, so we must fetch them explicitly
+          let groupNames = [];
+          try {
+            const groupCommand = new AdminListGroupsForUserCommand({
+              UserPoolId: userPoolId,
+              Username: cogUser.Username
+            });
+            const groupResult = await client.send(groupCommand);
+            groupNames = groupResult.Groups.map(g => g.GroupName);
+          } catch (gErr) {
+            console.warn(`⚠️ Could not fetch groups for ${cogUser.Username}:`, gErr.message);
+          }
+
+          // Map ListUsers format to the Payload format expected by sync service
+          const attributes = cogUser.Attributes.reduce((acc, attr) => {
+            acc[attr.Name] = attr.Value;
+            return acc;
+          }, {});
+
+          // Construct a mock payload that looks like an ID Token payload
+          const payload = {
+            sub: attributes.sub,
+            'cognito:username': cogUser.Username,
+            email: attributes.email,
+            name: attributes.name,
+            phone_number: attributes.phone_number,
+            'custom:role': attributes['custom:role'],
+            'cognito:groups': groupNames // Now populated!
+          };
+
+          await syncCognitoUserToAurora(payload, 'client');
+          results.synced++;
+        } catch (err) {
+          console.error(`❌ Failed to sync user ${cogUser.Username}:`, err.message);
+          results.failed++;
+        }
+      }
+
+    } while (nextToken);
+
+    console.log(`✅ Deep Sync Complete: ${results.synced} synced, ${results.failed} failed.`);
+    return results;
+
+  } catch (error) {
+    console.error('❌ Deep Sync Error:', error);
+    throw error;
   }
 };

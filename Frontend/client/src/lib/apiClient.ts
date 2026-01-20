@@ -38,12 +38,33 @@ apiClient.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (refreshToken) {
+          // Get user info to determine userType for refresh
+          const userStr = localStorage.getItem('user');
+          let userType = 'client'; // default
+          if (userStr) {
+            try {
+              const user = JSON.parse(userStr);
+              userType = user.userType || (user.role === 'client' ? 'client' : 'internal');
+            } catch (e) {
+              console.warn('Could not parse user data for refresh');
+            }
+          }
+
           const response = await axios.post(`${API_BASE_URL}/api/auth/refresh`, {
             refreshToken,
+            userType,
           });
 
-          const { idToken } = response.data;
+          const idToken = response.data.tokens?.idToken || response.data.idToken;
+
+          if (!idToken) {
+            throw new Error('No idToken in refresh response');
+          }
+
           localStorage.setItem('idToken', idToken);
+          if (response.data.tokens?.accessToken) {
+            localStorage.setItem('accessToken', response.data.tokens.accessToken);
+          }
 
           originalRequest.headers.Authorization = `Bearer ${idToken}`;
           return apiClient(originalRequest);

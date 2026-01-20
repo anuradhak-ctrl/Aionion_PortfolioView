@@ -93,6 +93,7 @@ class AuthService {
         // Save session for password change
         sessionStorage.setItem('authSession', data.session!);
         sessionStorage.setItem('authUsername', data.username!);
+        sessionStorage.setItem('authStatus', 'NEW_PASSWORD_REQUIRED');
         return data;
       }
 
@@ -312,6 +313,10 @@ class AuthService {
       }
 
       const data = await response.json();
+
+      if (data.tokens?.idToken) {
+        localStorage.setItem('idToken', data.tokens.idToken);
+      }
 
       if (data.tokens?.accessToken) {
         localStorage.setItem('accessToken', data.tokens.accessToken);

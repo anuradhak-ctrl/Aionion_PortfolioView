@@ -5,6 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ClientDataProvider } from "@/contexts/ClientDataContext";
 import Login from "@/pages/Login";
+import ChangePassword from "@/pages/ChangePassword";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import ClientDashboard from "@/pages/ClientDashboard";
 import RMDashboard from "@/pages/rm/RMDashboard";
@@ -56,6 +57,8 @@ import AdminAdministration from "@/pages/admin/AdminAdministration";
 import AdminProfile from "@/pages/admin/AdminProfile";
 import UnderDevelopment from "@/components/UnderDevelopment";
 
+import RoleHierarchy from "@/pages/admin/RoleHierarchy";
+
 function Redirect({ to }: { to?: string }) {
   const [, setLocation] = useLocation();
   const { user } = useAuth();
@@ -93,6 +96,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={Login} />
+      <Route path="/change-password" component={ChangePassword} />
       <Route path="/">
         <ProtectedRoute>
           <Redirect />
@@ -283,6 +287,11 @@ function Router() {
       <Route path="/admin/administration">
         <ProtectedRoute>
           <AdminAdministration />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin/role-permissions">
+        <ProtectedRoute>
+          <RoleHierarchy />
         </ProtectedRoute>
       </Route>
       <Route path="/admin/profile">

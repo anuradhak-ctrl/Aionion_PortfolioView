@@ -1,4 +1,5 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
+import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     Shield,
@@ -54,6 +55,7 @@ import adminService, { AdminUser, UserRole } from "@/services/adminService";
 import { useToast } from "@/hooks/use-toast";
 
 export default function AdminAdministration() {
+    const [, setLocation] = useLocation();
     const { toast } = useToast();
     const [isManageUsersOpen, setIsManageUsersOpen] = useState(false);
     const [isEditUserOpen, setIsEditUserOpen] = useState(false);
@@ -68,6 +70,17 @@ export default function AdminAdministration() {
         name: "",
         role: "" as UserRole,
         is_active: true
+    });
+    const [isCreateUserOpen, setIsCreateUserOpen] = useState(false);
+    const [createForm, setCreateForm] = useState({
+        client_id: "",
+        email: "",
+        name: "",
+        role: "client" as UserRole,
+        phone: "",
+        password: "TempPass123!",
+        branch_code: "",
+        zone_code: ""
     });
     const [userStats, setUserStats] = useState({
         clients: 0,
@@ -138,7 +151,7 @@ export default function AdminAdministration() {
 
     const quickActions = [
         { label: "Manage Users", action: () => setIsManageUsersOpen(true) },
-        { label: "Role Permissions", action: () => toast({ title: "Coming Soon", description: "Role Permissions feature is under development" }) },
+        { label: "Role Permissions", action: () => setLocation("/admin/role-permissions") },
         { label: "Audit Logs", action: () => toast({ title: "Coming Soon", description: "Audit Logs feature is under development" }) },
         { label: "System Settings", action: () => toast({ title: "Coming Soon", description: "System Settings feature is under development" }) },
         { label: "Data Reconciliation", action: () => toast({ title: "Coming Soon", description: "Data Reconciliation feature is under development" }) }
@@ -232,6 +245,59 @@ export default function AdminAdministration() {
             toast({
                 title: "Error",
                 description: error.response?.data?.message || "Failed to update user",
+                variant: "destructive"
+            });
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    // Create new user
+    const createUser = async () => {
+        if (!createForm.client_id || !createForm.email || !createForm.name || !createForm.role) {
+            toast({
+                title: "Error",
+                description: "Please fill in all required fields",
+                variant: "destructive"
+            });
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const response = await adminService.createUser({
+                client_id: createForm.client_id,
+                email: createForm.email,
+                name: createForm.name,
+                role: createForm.role as Exclude<UserRole, 'all'>,
+                phone: createForm.phone,
+                // Pass other fields if service supports them, but for now basic
+                password: createForm.password // Pass the password for Cognito creation
+            });
+
+            if (response.success) {
+                toast({
+                    title: "Success",
+                    description: "User created successfully in Database and Cognito"
+                });
+                setIsCreateUserOpen(false);
+                setCreateForm({
+                    client_id: "",
+                    email: "",
+                    name: "",
+                    role: "client",
+                    phone: "",
+                    password: "TempPass123!",
+                    branch_code: "",
+                    zone_code: ""
+                });
+                fetchUsers();
+                fetchUserStats();
+            }
+        } catch (error: any) {
+            toast({
+                title: "Error",
+                description: error.response?.data?.message || "Failed to create user",
                 variant: "destructive"
             });
         } finally {
@@ -471,7 +537,7 @@ export default function AdminAdministration() {
                                 <SelectItem value="director">Directors</SelectItem>
                             </SelectContent>
                         </Select>
-                        <Button className="gap-2">
+                        <Button className="gap-2" onClick={() => setIsCreateUserOpen(true)}>
                             <UserPlus className="h-4 w-4" />
                             Add User
                         </Button>
@@ -662,6 +728,115 @@ export default function AdminAdministration() {
                                 </>
                             ) : (
                                 "Save Changes"
+                            )}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Create User Dialog */}
+            <Dialog open={isCreateUserOpen} onOpenChange={setIsCreateUserOpen}>
+                <DialogContent className="max-w-md">
+                    <DialogHeader>
+                        <DialogTitle className="flex items-center gap-2">
+                            <UserPlus className="h-5 w-5" />
+                            Add User
+                        </DialogTitle>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto px-1">
+                        {/* Username */}
+                        <div className="space-y-2">
+                            <Label htmlFor="create-username">Username (Client ID) <span className="text-red-500">*</span></Label>
+                            <Input
+                                id="create-username"
+                                value={createForm.client_id}
+                                onChange={(e) => setCreateForm({ ...createForm, client_id: e.target.value })}
+                                placeholder="e.g. jdoe123"
+                            />
+                        </div>
+
+                        {/* Name */}
+                        <div className="space-y-2">
+                            <Label htmlFor="create-name">Name <span className="text-red-500">*</span></Label>
+                            <Input
+                                id="create-name"
+                                value={createForm.name}
+                                onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
+                                placeholder="Full Name"
+                            />
+                        </div>
+
+                        {/* Email */}
+                        <div className="space-y-2">
+                            <Label htmlFor="create-email">Email <span className="text-red-500">*</span></Label>
+                            <Input
+                                id="create-email"
+                                type="email"
+                                value={createForm.email}
+                                onChange={(e) => setCreateForm({ ...createForm, email: e.target.value })}
+                                placeholder="name@example.com"
+                            />
+                        </div>
+
+                        {/* Password */}
+                        <div className="space-y-2">
+                            <Label htmlFor="create-password">Temporary Password</Label>
+                            <Input
+                                id="create-password"
+                                type="text"
+                                value={createForm.password}
+                                onChange={(e) => setCreateForm({ ...createForm, password: e.target.value })}
+                                placeholder="TempPass123!"
+                            />
+                            <p className="text-xs text-muted-foreground">User will be prompted to change this on first login</p>
+                        </div>
+
+                        {/* Role */}
+                        <div className="space-y-2">
+                            <Label htmlFor="create-role">Role <span className="text-red-500">*</span></Label>
+                            <Select
+                                value={createForm.role}
+                                onValueChange={(val) => setCreateForm({ ...createForm, role: val as UserRole })}
+                            >
+                                <SelectTrigger id="create-role">
+                                    <SelectValue placeholder="Select role" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="client">Client</SelectItem>
+                                    <SelectItem value="rm">RM</SelectItem>
+                                    <SelectItem value="branch_manager">Branch Manager</SelectItem>
+                                    <SelectItem value="zonal_head">Zonal Manager</SelectItem>
+                                    <SelectItem value="super_admin">Super Admin</SelectItem>
+                                    <SelectItem value="director">Director</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        {/* Phone */}
+                        <div className="space-y-2">
+                            <Label htmlFor="create-phone">Phone</Label>
+                            <Input
+                                id="create-phone"
+                                value={createForm.phone}
+                                onChange={(e) => setCreateForm({ ...createForm, phone: e.target.value })}
+                                placeholder="+91..."
+                            />
+                        </div>
+                    </div>
+
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsCreateUserOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button onClick={createUser} disabled={isSaving}>
+                            {isSaving ? (
+                                <>
+                                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent mr-2" />
+                                    Creating...
+                                </>
+                            ) : (
+                                "Create User"
                             )}
                         </Button>
                     </DialogFooter>

@@ -1,145 +1,4 @@
-import pg from 'pg';
-import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
-
-const { Pool } = pg;
-
-// ==================== CONFIGURATION ====================
-
-const config = {
-    // RDS Proxy endpoint (NOT direct Aurora endpoint)
-    host: process.env.RDS_PROXY_ENDPOINT || 'portfolioview-proxy.proxy-ctcksa6gau5m.ap-south-1.rds.amazonaws.com',
-    port: parseInt(process.env.DB_PORT || '5432'),
-    database: process.env.DB_NAME || 'portfolioview',
-
-    // Connection pool settings optimized for Lambda + RDS Proxy
-    max: 1,                    // Lambda: 1 connection per instance (RDS Proxy handles pooling)
-    idleTimeoutMillis: 120000, // 2 minutes - longer than Lambda timeout
-    connectionTimeoutMillis: 10000,
-
-    // SSL required for RDS Proxy
-    // rejectUnauthorized: false for RDS Proxy (it uses its own cert)
-    ssl: {
-        rejectUnauthorized: false
-    }
-};
-
-// Secrets Manager client
-const secretsClient = new SecretsManagerClient({
-    region: process.env.AWS_REGION || 'ap-south-1'
-});
-
-// Connection pool singleton
-let pool = null;
-let dbCredentials = null;
-
-// ==================== CREDENTIALS FROM SECRETS MANAGER ====================
-
-/**
- * Fetch database credentials from AWS Secrets Manager
- * Cached to avoid repeated API calls
- */
-const getDbCredentials = async () => {
-    if (dbCredentials) {
-        return dbCredentials;
-    }
-
-    const secretArn = process.env.DB_SECRET_ARN;
-
-    if (!secretArn) {
-        // Fallback to env vars for local development
-        console.warn('⚠️ DB_SECRET_ARN not set, using environment variables');
-        dbCredentials = {
-            username: process.env.DB_USER || 'portfolio_admin',
-            password: process.env.DB_PASSWORD || ''
-        };
-        return dbCredentials;
-    }
-
-    try {
-        const command = new GetSecretValueCommand({ SecretId: secretArn });
-        const response = await secretsClient.send(command);
-
-        if (response.SecretString) {
-            dbCredentials = JSON.parse(response.SecretString);
-            console.log('✅ Database credentials loaded from Secrets Manager');
-        }
-
-        return dbCredentials;
-    } catch (error) {
-        console.error('❌ Failed to fetch DB credentials from Secrets Manager:', error.message);
-        throw error;
-    }
-};
-
-// ==================== CONNECTION POOL ====================
-
-/**
- * Get or create the connection pool
- * Uses RDS Proxy endpoint - NEVER direct Aurora endpoint
- */
-const getPool = async () => {
-    if (pool) {
-        return pool;
-    }
-
-    const credentials = await getDbCredentials();
-
-    pool = new Pool({
-        ...config,
-        user: credentials.username,
-        password: credentials.password
-    });
-
-    // Connection error handler
-    pool.on('error', (err) => {
-        console.error('❌ Unexpected pool error:', err.message);
-        pool = null; // Reset pool on error
-    });
-
-    console.log(`✅ PostgreSQL pool created → ${config.host}:${config.port}/${config.database}`);
-    return pool;
-};
-
-// ==================== QUERY EXECUTION ====================
-
-/**
- * Execute a parameterized query
- * @param {string} text - SQL query with $1, $2, etc. placeholders
- * @param {Array} params - Query parameters
- * @returns {Promise<Object>} Query result with rows
- */
-export const query = async (text, params = []) => {
-    const dbPool = await getPool();
-    const start = Date.now();
-
-    try {
-        const result = await dbPool.query(text, params);
-        const duration = Date.now() - start;
-
-        console.log(`📊 Query executed [${duration}ms] - ${result.rowCount} rows`);
-        return result;
-    } catch (error) {
-        console.error('❌ Query error:', error.message);
-        console.error('   SQL:', text);
-        throw error;
-    }
-};
-
-/**
- * Execute a query and return just the rows
- */
-export const queryRows = async (text, params = []) => {
-    const result = await query(text, params);
-    return result.rows;
-};
-
-/**
- * Execute a query expecting a single row
- */
-export const queryOne = async (text, params = []) => {
-    const result = await query(text, params);
-    return result.rows[0] || null;
-};
+import { queryRows, queryOne } from '../aurora/connection.js';
 
 // ==================== USER MANAGEMENT QUERIES ====================
 
@@ -149,7 +8,7 @@ export const queryOne = async (text, params = []) => {
  */
 export const getUsersByRole = async (role = null, limit = 50, offset = 0) => {
     let sql = `
-        SELECT id, client_id, cognito_sub, email, name, role, status, phone, 
+        SELECT id, client_id, cognito_sub, email, name, role, status, (status = 'active') AS is_active, phone, 
                branch_id, zone_id, hierarchy_level, parent_id,
                created_at, updated_at, last_login_at
         FROM users
@@ -194,7 +53,7 @@ export const getTotalUserCount = async () => {
  */
 export const getUserById = async (userId) => {
     const sql = `
-        SELECT id, client_id, cognito_sub, email, name, role, status, phone,
+        SELECT id, client_id, cognito_sub, email, name, role, status, (status = 'active') AS is_active, phone,
                branch_id, zone_id, hierarchy_level, parent_id, hierarchy_path,
                created_at, updated_at, last_login_at
         FROM users
@@ -209,7 +68,7 @@ export const getUserById = async (userId) => {
  */
 export const getUserByClientId = async (clientId) => {
     const sql = `
-        SELECT id, client_id, cognito_sub, email, name, role, status, phone,
+        SELECT id, client_id, cognito_sub, email, name, role, status, (status = 'active') AS is_active, phone,
                branch_id, zone_id, hierarchy_level, parent_id, hierarchy_path,
                created_at, updated_at, last_login_at
         FROM users
@@ -267,8 +126,8 @@ export const updateUser = async (userId, updates) => {
         params.push(role);
     }
     if (is_active !== undefined) {
-        setClauses.push(`is_active = $${paramIndex++}`);
-        params.push(is_active);
+        setClauses.push(`status = $${paramIndex++}`);
+        params.push(is_active ? 'active' : 'inactive');
     }
     if (phone !== undefined) {
         setClauses.push(`phone = $${paramIndex++}`);
@@ -294,7 +153,7 @@ export const updateUser = async (userId, updates) => {
         UPDATE users 
         SET ${setClauses.join(', ')}
         WHERE id = $${paramIndex}
-        RETURNING id, client_id, email, name, role, is_active, phone, branch_code, zone_code, updated_at
+        RETURNING id, client_id, email, name, role, status, (status = 'active') AS is_active, phone, branch_code, zone_code, updated_at
     `;
 
     return queryOne(sql, params);
@@ -304,13 +163,33 @@ export const updateUser = async (userId, updates) => {
  * Update user status only
  */
 export const updateUserStatus = async (userId, isActive) => {
+    const status = isActive ? 'active' : 'inactive';
     const sql = `
         UPDATE users 
-        SET is_active = $1, updated_at = NOW()
+        SET status = $1, updated_at = NOW()
         WHERE id = $2
-        RETURNING id, is_active
+        RETURNING id, status, (status = 'active') AS is_active
     `;
-    return queryOne(sql, [isActive, userId]);
+    return queryOne(sql, [status, userId]);
+};
+
+/**
+ * Assign user to parent (update hierarchy)
+ */
+export const assignParent = async (userId, parentId) => {
+    // If parentId provided, verify it exists first
+    if (parentId) {
+        const parent = await getUserById(parentId);
+        if (!parent) return null;
+    }
+
+    const sql = `
+        UPDATE users 
+        SET parent_id = $1, updated_at = NOW()
+        WHERE id = $2
+        RETURNING id, parent_id, role
+    `;
+    return queryOne(sql, [parentId, userId]);
 };
 
 /**
@@ -326,7 +205,7 @@ export const deleteUser = async (userId) => {
  */
 export const searchUsers = async (searchTerm, role = null, limit = 50) => {
     let sql = `
-        SELECT id, client_id, email, name, role, is_active, created_at
+        SELECT id, client_id, email, name, role, status, (status = 'active') AS is_active, created_at
         FROM users
         WHERE (name ILIKE $1 OR email ILIKE $1)
     `;
@@ -370,7 +249,7 @@ export const healthCheck = async () => {
             status: 'healthy',
             database: result.database,
             timestamp: result.timestamp,
-            connection: `${config.host}:${config.port}`
+            connection: 'active'
         };
     } catch (error) {
         return {
@@ -395,7 +274,7 @@ export const closePool = async () => {
 
 // Default export
 export default {
-    query,
+    // query,
     queryRows,
     queryOne,
     getUsersByRole,
@@ -406,6 +285,7 @@ export default {
     createUser,
     updateUser,
     updateUserStatus,
+    assignParent,
     deleteUser,
     searchUsers,
     updateLastLogin,

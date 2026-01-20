@@ -19,6 +19,15 @@ export default function Login() {
 
     try {
       await login({ username, password });
+
+      // Check for session storage set by authService intermediate steps
+      const authStatus = sessionStorage.getItem('authStatus');
+
+      if (authStatus === 'NEW_PASSWORD_REQUIRED') {
+        setLocation("/change-password");
+        return;
+      }
+
       // Wait for auth state to fully update before redirect
       setTimeout(() => {
         setLocation("/");

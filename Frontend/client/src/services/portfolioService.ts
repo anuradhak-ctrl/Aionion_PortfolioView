@@ -25,13 +25,41 @@ api.interceptors.request.use(
     }
 );
 
-export const getPortfolioData = async () => {
+export const getPortfolioData = async (clientCode?: string) => {
     try {
-        const response = await api.get('/users/portfolio');
+        const url = clientCode ? `/users/portfolio?clientCode=${clientCode}` : '/users/portfolio';
+        const response = await api.get(url);
         // The backend returns { success: true, clientCode: '...', data: [...] }
         return response.data;
     } catch (error) {
         console.error('Error fetching portfolio data:', error);
+        throw error;
+    }
+};
+
+export const refreshPortfolioData = async (clientCode?: string) => {
+    try {
+        const url = clientCode ? `/users/portfolio/refresh?clientCode=${clientCode}` : '/users/portfolio/refresh';
+        const response = await api.post(url, {}, { timeout: 30000 }); // 30 second timeout for refresh
+        return response.data;
+    } catch (error) {
+        console.error('Error refreshing portfolio data:', error);
+        throw error;
+    }
+};
+
+export const getLedgerData = async (clientCode?: string, financialYear?: string) => {
+    try {
+        let url = '/users/ledger';
+        const params = new URLSearchParams();
+        if (clientCode) params.append('clientCode', clientCode);
+        if (financialYear) params.append('financialYear', financialYear);
+        if (params.toString()) url += `?${params.toString()}`;
+
+        const response = await api.get(url);
+        return response.data;
+    } catch (error) {
+        console.error('Error fetching ledger data:', error);
         throw error;
     }
 };

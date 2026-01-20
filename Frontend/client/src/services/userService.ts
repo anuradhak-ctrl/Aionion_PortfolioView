@@ -13,6 +13,7 @@ export interface UserProfile {
 
 export interface Client {
   id: string;
+  client_id?: string;
   name: string;
   email: string;
   phone?: string;
@@ -44,7 +45,7 @@ class UserService {
 
   async getClients(): Promise<Client[]> {
     const response = await apiClient.get('/api/users/clients');
-    return response.data;
+    return response.data.clients;
   }
 }
 

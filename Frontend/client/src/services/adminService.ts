@@ -14,6 +14,7 @@ export interface AdminUser {
     created_at: string;
     updated_at: string;
     last_login_at: string | null;
+    parent_id?: number | null;
 }
 
 export interface UserStats {
@@ -93,10 +94,14 @@ class AdminService {
      * Create a new user
      */
     async createUser(userData: {
+        client_id: string; // Add client_id
         email: string;
-        password: string;
+        password?: string; // Make password optional if not always needed
         name: string;
         role: Exclude<UserRole, 'all'>;
+        phone?: string;
+        branch_code?: string;
+        zone_code?: string;
     }): Promise<{ success: boolean; message: string }> {
         const response = await apiClient.post('/api/admin/users', userData);
         return response.data;
@@ -134,6 +139,22 @@ class AdminService {
         }
     ): Promise<{ success: boolean; message: string; data: AdminUser }> {
         const response = await apiClient.put(`/api/admin/users/${id}`, userData);
+        return response.data;
+    }
+
+    /**
+     * Assign a parent to a user
+     */
+    async assignParent(userId: number, parentId: number | null): Promise<{ success: boolean; message: string }> {
+        const response = await apiClient.patch(`/api/admin/users/${userId}/parent`, { parent_id: parentId });
+        return response.data;
+    }
+
+    /**
+     * Sync users from Cognito
+     */
+    async syncUsers(): Promise<{ success: boolean; message: string; data: any }> {
+        const response = await apiClient.post('/api/admin/users/sync', {});
         return response.data;
     }
 }

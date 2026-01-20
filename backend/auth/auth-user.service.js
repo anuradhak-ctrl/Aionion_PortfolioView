@@ -5,26 +5,30 @@
  * Guards should never know how data is fetched.
  */
 
-// DISABLED: Aurora database - using Cognito-only mode
-// import { userRepo } from '../aurora/index.js';
+import { userRepo } from '../aurora/index.js';
 
 /**
  * Load authenticated user from JWT token
  * Called by authGuard after JWT verification
  * 
- * COGNITO-ONLY MODE: Build user object from JWT payload without database
- * 
  * @param {Object} decoded - Decoded JWT payload
  * @returns {Object|null} User from JWT token
  */
 export const loadAuthUser = async (decoded) => {
-    // DISABLED: Database lookup - using Cognito-only mode
-    // let user = await userRepo.findByCognitoSub(decoded.sub);
-    // if (!user) {
-    //     const username = decoded['cognito:username'] || decoded.sub;
-    //     user = await userRepo.findByClientId(username);
-    // }
-    // return user;
+    // Database lookup
+    let user = await userRepo.findByCognitoSub(decoded.sub);
+
+    if (!user) {
+        // Try finding by username/client_id if sub match fails
+        const username = decoded['cognito:username'] || decoded.sub;
+        user = await userRepo.findByClientId(username);
+    }
+
+    if (user) {
+        return user;
+    }
+
+    // Fallback: Build user object from JWT token only if not found in DB (e.g. first login before sync)
 
     // Build user object from JWT token only
     if (!decoded || !decoded.sub) {

@@ -19,7 +19,7 @@ const config = {
     max: 1,
     idleTimeoutMillis: 120000,
     connectionTimeoutMillis: 10000,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false
+    ssl: { rejectUnauthorized: false }
 };
 
 // Secrets Manager client
@@ -64,7 +64,12 @@ const getDbCredentials = async () => {
         return dbCredentials;
     } catch (error) {
         console.error('❌ Failed to fetch DB credentials:', error.message);
-        throw error;
+        console.warn('⚠️ Falling back to environment variables for DB credentials');
+        dbCredentials = {
+            username: process.env.DB_USER || 'portfolio_admin',
+            password: process.env.DB_PASSWORD || ''
+        };
+        return dbCredentials;
     }
 };
 

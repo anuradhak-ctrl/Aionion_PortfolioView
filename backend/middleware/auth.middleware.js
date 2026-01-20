@@ -1,7 +1,6 @@
 import * as authService from '../services/auth.service.js';
 import { loadAuthUser, isTokenExpired } from '../auth/auth-user.service.js';
-// DISABLED: Aurora database - using Cognito-only mode
-// import { hierarchyRepo } from '../aurora/index.js';
+import { hierarchyRepo } from '../aurora/index.js';
 
 export const authGuard = async (req, res, next) => {
   try {
@@ -16,6 +15,7 @@ export const authGuard = async (req, res, next) => {
     }
 
     const token = authHeader.substring(7);
+    console.log(`Auth Debug: Received token start=${token.substring(0, 15)}... length=${token.length}`);
 
     // Step 2: Verify JWT (signature, expiry, issuer, audience)
     const decoded = await authService.verifyToken(token);

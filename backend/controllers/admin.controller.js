@@ -158,6 +158,47 @@ export const updateUserStatus = async (req, res) => {
 };
 
 /**
+ * Assign parent (manager) to user
+ * PATCH /api/admin/users/:id/parent
+ */
+export const assignParent = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { parent_id } = req.body;
+
+        // parent_id can be null to unassign
+        if (parent_id !== null && typeof parent_id !== 'number') {
+            return res.status(400).json({
+                success: false,
+                message: 'parent_id must be a number or null'
+            });
+        }
+
+        const result = await auroraService.assignParent(parseInt(id), parent_id);
+
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                message: 'User or Parent not found'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'User parent updated successfully',
+            data: result
+        });
+    } catch (error) {
+        console.error('assignParent error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Failed to assign parent',
+            error: process.env.NODE_ENV === 'development' ? error.message : undefined
+        });
+    }
+};
+
+/**
  * Create a new user
  * POST /api/admin/users
  */
@@ -182,8 +223,47 @@ export const createUser = async (req, res) => {
             });
         }
 
+        // 1. Create in Cognito first (to get the sub and ensure they can log in)
+        // Only if not explicitly disabled via query param (e.g. ?skipCognito=true)
+        let cognitoSub = null;
+        if (req.query.skipCognito !== 'true') {
+            try {
+                // Determine user type
+                const userType = role === 'client' ? 'client' : 'internal';
+
+                // Create in Cognito
+                // Pass password if provided, else use default temporary
+                const cognitoResult = await import('../services/cognito.auth.service.js').then(m => m.adminCreateUser({
+                    username: client_id,
+                    email,
+                    name,
+                    role,
+                    userType,
+                    temporaryPassword: req.body.password || 'TempPass123!'
+                }));
+
+                cognitoSub = cognitoResult.cognitoSub;
+                console.log(`✅ Created Cognito user for ${client_id}, sub: ${cognitoSub}`);
+
+            } catch (cognitoError) {
+                // If user already exists in Cognito, we might still want to proceed to create in Aurora if missing
+                if (cognitoError.name === 'UsernameExistsException') {
+                    console.warn(`User ${client_id} already exists in Cognito. Proceeding to create in DB...`);
+                    // Optionally fetch the SUB if possible, but for now leave null (will be linked on login)
+                } else {
+                    console.error('Cognito creation failed:', cognitoError);
+                    return res.status(500).json({
+                        success: false,
+                        message: 'Failed to create user in Cognito',
+                        error: cognitoError.message
+                    });
+                }
+            }
+        }
+
         const user = await auroraService.createUser({
-            client_id, email, name, role, phone, branch_code, zone_code
+            client_id, email, name, role, phone, branch_code, zone_code,
+            cognito_sub: cognitoSub
         });
 
         res.status(201).json({
@@ -345,3 +425,38 @@ export const dbHealthCheck = async (req, res) => {
         });
     }
 };
+
+/**
+ * Sync all users from Cognito to Aurora
+ * POST /api/admin/users/sync
+ */
+export const syncUsers = async (req, res) => {
+    console.log('🔄 API: Sync Users Request Received');
+    console.log(`ℹ️ Configured Pool ID: ${process.env.COGNITO_USER_POOL_ID}`);
+
+    try {
+        const authService = await import('../services/cognito.auth.service.js');
+
+        if (!authService.syncAllUsersFromCognito) {
+            throw new Error('syncAllUsersFromCognito function not found in service export. Check cognito.auth.service.js exports.');
+        }
+
+        const result = await authService.syncAllUsersFromCognito();
+        console.log('✅ API: Sync Success', result);
+
+        res.json({
+            success: true,
+            message: 'User sync completed',
+            data: result
+        });
+    } catch (error) {
+        console.error('❌ API: syncUsers error:', error);
+        res.status(500).json({
+            success: false,
+            message: `Sync failed: ${error.message}`, // Send the actual error to the frontend
+            error: error.message,
+            stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+        });
+    }
+};
+

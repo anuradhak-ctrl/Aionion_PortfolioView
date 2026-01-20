@@ -6,7 +6,7 @@ import * as adminController from '../controllers/admin.controller.js';
 const router = express.Router();
 
 // All admin routes require authentication and admin role
-const adminAuth = [verifyToken, requireRole('super_admin', 'director')];
+const adminAuth = [verifyToken, requireRole('super_admin', 'director', 'zonal_head', 'branch_manager')];
 
 // GET /api/admin/users - Get users by role with pagination
 router.get('/users', adminAuth, adminController.getUsersByRole);
@@ -17,11 +17,17 @@ router.get('/users/stats', adminAuth, adminController.getUserStats);
 // GET /api/admin/users/:id - Get single user
 router.get('/users/:id', adminAuth, adminController.getUserById);
 
+// POST /api/admin/users/sync - Sync users from Cognito
+router.post('/users/sync', adminAuth, adminController.syncUsers);
+
 // POST /api/admin/users - Create new user
 router.post('/users', adminAuth, adminController.createUser);
 
 // PATCH /api/admin/users/:id/status - Update user status
 router.patch('/users/:id/status', adminAuth, adminController.updateUserStatus);
+
+// PATCH /api/admin/users/:id/parent - Assign parent (manager) to user
+router.patch('/users/:id/parent', adminAuth, adminController.assignParent);
 
 // PUT /api/admin/users/:id - Update user details
 router.put('/users/:id', adminAuth, adminController.updateUser);
