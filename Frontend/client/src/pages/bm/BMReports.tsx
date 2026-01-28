@@ -1,72 +1,20 @@
 import { DashboardLayout } from "@/components/DashboardLayout";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLocation } from "wouter";
+import { Download, Printer, FileText, ChevronDown, Eye, Loader2 } from "lucide-react";
+import userService, { Subordinate } from "@/services/userService";
+import { mockSubordinates, mockEquityHoldings, mockRecentTransactions } from "@/utils/mockData";
+import { exportHoldingsToXLSX, exportTransactionsToXLSX } from "@/utils/exportUtils";
 
 // --- Types ---
 type Tab = "Holdings" | "Transactions" | "Ledger" | "Dividends" | "Tax P&L" | "Capital Gains" | "XIRR";
-
-// --- Sample Data ---
-const bmRMsData = [
-    { rmName: "Amit Singh", rmId: "RM001", clientCount: 5, totalAUM: "₹2.57 Cr", todayChange: "+₹23,900", todayChangePercent: "+0.09%", avgXirr: "15.6%" },
-    { rmName: "Neha Patel", rmId: "RM002", clientCount: 4, totalAUM: "₹1.85 Cr", todayChange: "-₹8,500", todayChangePercent: "-0.05%", avgXirr: "12.3%" },
-    { rmName: "Rahul Verma", rmId: "RM003", clientCount: 6, totalAUM: "₹3.42 Cr", todayChange: "+₹45,200", todayChangePercent: "+0.13%", avgXirr: "18.2%" },
-    { rmName: "Pooja Sharma", rmId: "RM004", clientCount: 3, totalAUM: "₹1.28 Cr", todayChange: "+₹12,800", todayChangePercent: "+0.10%", avgXirr: "14.8%" },
-];
-
-const rmClientsMap: Record<string, any[]> = {
-    "RM001": [
-        { clientName: "Rajesh Kumar", clientId: "CL001", portfolioValue: "₹45.5 L", todayChange: "+₹12,500", returnsPercent: "+18.5%", xirr: "15.2%" },
-        { clientName: "Priya Sharma", clientId: "CL002", portfolioValue: "₹32.8 L", todayChange: "-₹5,200", returnsPercent: "+12.3%", xirr: "11.8%" },
-        { clientName: "Amit Patel", clientId: "CL003", portfolioValue: "₹67.2 L", todayChange: "+₹28,400", returnsPercent: "+23.5%", xirr: "19.4%" },
-        { clientName: "Sneha Gupta", clientId: "CL004", portfolioValue: "₹22.1 L", todayChange: "+₹3,800", returnsPercent: "+13.1%", xirr: "10.5%" },
-        { clientName: "Vikram Mehta", clientId: "CL005", portfolioValue: "₹89.4 L", todayChange: "-₹15,600", returnsPercent: "+24.9%", xirr: "21.2%" },
-    ],
-    "RM002": [
-        { clientName: "Anita Desai", clientId: "CL006", portfolioValue: "₹38.2 L", todayChange: "+₹8,900", returnsPercent: "+14.2%", xirr: "13.5%" },
-        { clientName: "Suresh Rao", clientId: "CL007", portfolioValue: "₹52.4 L", todayChange: "-₹12,300", returnsPercent: "+10.8%", xirr: "9.8%" },
-        { clientName: "Meera Joshi", clientId: "CL008", portfolioValue: "₹45.8 L", todayChange: "-₹5,100", returnsPercent: "+16.5%", xirr: "14.2%" },
-        { clientName: "Karan Singh", clientId: "CL009", portfolioValue: "₹48.6 L", todayChange: "+₹0", returnsPercent: "+11.2%", xirr: "11.8%" },
-    ],
-    "RM003": [
-        { clientName: "Deepak Malhotra", clientId: "CL010", portfolioValue: "₹72.5 L", todayChange: "+₹18,200", returnsPercent: "+21.3%", xirr: "19.5%" },
-        { clientName: "Sunita Aggarwal", clientId: "CL011", portfolioValue: "₹58.3 L", todayChange: "+₹15,800", returnsPercent: "+19.8%", xirr: "17.2%" },
-        { clientName: "Ravi Khanna", clientId: "CL012", portfolioValue: "₹42.8 L", todayChange: "+₹9,400", returnsPercent: "+15.6%", xirr: "16.8%" },
-        { clientName: "Geeta Kapoor", clientId: "CL013", portfolioValue: "₹55.2 L", todayChange: "-₹2,200", returnsPercent: "+18.2%", xirr: "18.5%" },
-        { clientName: "Mohan Reddy", clientId: "CL014", portfolioValue: "₹68.4 L", todayChange: "+₹4,000", returnsPercent: "+17.5%", xirr: "19.2%" },
-        { clientName: "Lakshmi Iyer", clientId: "CL015", portfolioValue: "₹44.8 L", todayChange: "+₹0", returnsPercent: "+16.8%", xirr: "17.8%" },
-    ],
-    "RM004": [
-        { clientName: "Arun Nair", clientId: "CL016", portfolioValue: "₹38.5 L", todayChange: "+₹6,200", returnsPercent: "+13.5%", xirr: "14.2%" },
-        { clientName: "Kavita Menon", clientId: "CL017", portfolioValue: "₹48.2 L", todayChange: "+₹4,600", returnsPercent: "+15.8%", xirr: "15.5%" },
-        { clientName: "Vijay Kumar", clientId: "CL018", portfolioValue: "₹41.3 L", todayChange: "+₹2,000", returnsPercent: "+14.2%", xirr: "14.8%" },
-    ],
-};
-
-// Holdings and Transaction data for sample clients
-const clientHoldingsData: Record<string, any[]> = {
-    "CL001": [
-        { symbol: "RELIANCE", name: "Reliance Industries", isin: "INE002A01018", sector: "Energy", qtyAvailable: 150, qtyDiscrepant: 0, qtyLongTerm: 80, qtyPledgedMargin: 20, qtyPledgedLoan: 0, avgPrice: "2,380.00", prevClosing: "2,680.00", unrealizedPL: "45,000.00", unrealizedPLPercent: "12.61", type: "Equity" },
-        { symbol: "HDFCBANK", name: "HDFC Bank", isin: "INE040A01034", sector: "Banking", qtyAvailable: 200, qtyDiscrepant: 10, qtyLongTerm: 150, qtyPledgedMargin: 40, qtyPledgedLoan: 0, avgPrice: "1,520.00", prevClosing: "1,720.00", unrealizedPL: "40,000.00", unrealizedPLPercent: "13.16", type: "Equity" },
-    ],
-    "CL010": [
-        { symbol: "BAJFINANCE", name: "Bajaj Finance", isin: "INE296A01024", sector: "Finance", qtyAvailable: 100, qtyDiscrepant: 0, qtyLongTerm: 100, qtyPledgedMargin: 0, qtyPledgedLoan: 0, avgPrice: "5,800.00", prevClosing: "7,250.00", unrealizedPL: "1,45,000.00", unrealizedPLPercent: "25.00", type: "Equity" },
-    ],
-};
-
-const clientTransactionsData: Record<string, any[]> = {
-    "CL001": [
-        { symbol: "RELIANCE", isin: "INE002A01018", tradeDate: "12-Jan-2026", exchange: "NSE", segment: "Equity", series: "EQ", tradeType: "BUY", auction: "No", quantity: "50", price: "2,450.00", tradeId: "T100123", orderId: "O223344", executionTime: "12-Jan-2026 10:30:15", asset: "Equity" },
-    ],
-    "CL010": [
-        { symbol: "BAJFINANCE", isin: "INE296A01024", tradeDate: "10-Jan-2026", exchange: "NSE", segment: "Equity", series: "EQ", tradeType: "BUY", auction: "No", quantity: "20", price: "7,200.00", tradeId: "T100126", orderId: "O334455", executionTime: "10-Jan-2026 11:15:20", asset: "Equity" },
-    ],
-};
 
 // --- Components ---
 const TabButton = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
     <button
         onClick={onClick}
-        className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${active
+        className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 print:hidden ${active
             ? "bg-primary text-primary-foreground shadow-lg"
             : "bg-background text-muted-foreground border border-border hover:bg-muted hover:text-foreground"
             }`}
@@ -75,66 +23,84 @@ const TabButton = ({ active, onClick, children }: { active: boolean; onClick: ()
     </button>
 );
 
-// --- Icons ---
-const ChevronDownIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><polyline points="6 9 12 15 18 9"></polyline></svg>
-);
-
-const DownloadIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-);
-
-const EyeIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path><circle cx="12" cy="12" r="3"></circle></svg>
-);
-
 // --- Tab Content Components ---
-const HoldingsTab = ({ clientId }: { clientId: string }) => {
+// Using mock data from utils for consistency
+const HoldingsTab = ({
+    clientId,
+    clientName,
+    rmName,
+    status
+}: {
+    clientId: string;
+    clientName?: string;
+    rmName?: string;
+    status?: string;
+}) => {
     const [filter, setFilter] = useState("All");
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const holdings = clientHoldingsData[clientId] || [];
+    const [isAssetDropdownOpen, setIsAssetDropdownOpen] = useState(false);
+    const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
+
+    // Use mock equity holdings for all clients for now, or filter if we had specific client data
+    const holdings = mockEquityHoldings.map(h => ({
+        ...h,
+        symbol: h.security,
+        type: 'Equity',
+        isin: 'INE' + Math.floor(Math.random() * 1000000), // Mock ISIN
+        sector: 'Finance', // Mock Sector
+        qtyAvailable: h.qty,
+        qtyDiscrepant: 0,
+        qtyLongTerm: h.qty,
+        qtyPledgedMargin: 0,
+        qtyPledgedLoan: 0,
+        prevClosing: "₹" + (parseFloat(h.cmp.replace('₹', '').replace(',', '')) * 0.95).toFixed(2),
+        unrealizedPL: h.pl,
+        unrealizedPLPercent: h.return.replace('%', ''),
+    }));
 
     const filteredHoldings = filter === "All"
         ? holdings
         : holdings.filter(h => h.type === filter);
 
-    const handleDownload = () => {
-        const headers = ["Symbol", "ISIN", "Sector", "Quantity Available", "Quantity Discrepant", "Quantity Long Term", "Quantity Pledged (Margin)", "Quantity Pledged (Loan)", "Average Price", "Previous Closing Price", "Unrealized P&L", "Unrealized P&L %", "Asset"];
-        const csvContent = [headers.join(","), ...filteredHoldings.map(row => [row.symbol, row.isin, row.sector, row.qtyAvailable, row.qtyDiscrepant, row.qtyLongTerm, row.qtyPledgedMargin, row.qtyPledgedLoan, row.avgPrice, row.prevClosing, row.unrealizedPL, row.unrealizedPLPercent, row.type].join(","))].join("\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        link.setAttribute("href", URL.createObjectURL(blob));
-        link.setAttribute("download", `holdings_${clientId}_${filter.toLowerCase()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    const handleDownloadExcel = () => {
+        exportHoldingsToXLSX(filteredHoldings, {
+            clientName: clientName || 'Unknown Client',
+            clientId: clientId,
+            rmName: rmName,
+            status: status
+        });
+        setIsDownloadDropdownOpen(false);
+    };
+
+    const handlePrint = () => {
+        window.print();
+        setIsDownloadDropdownOpen(false);
     };
 
     return (
-        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
             {/* Header Section */}
             <div className="p-4 md:p-6 pb-4 bg-background/50">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <h2 className="text-lg md:text-xl font-bold text-foreground">Holdings Report</h2>
-                    <div className="flex gap-2 md:gap-4 w-full sm:w-auto">
+                    <h2 className="text-lg md:text-xl font-bold text-foreground print:text-black">Holdings Report</h2>
+                    <div className="flex gap-2 md:gap-4 w-full sm:w-auto print:hidden">
                         {/* Filter Dropdown */}
                         <div className="relative flex-1 sm:flex-none">
                             <button
-                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                onClick={() => setIsAssetDropdownOpen(!isAssetDropdownOpen)}
                                 className="flex items-center justify-between w-full sm:w-[120px] md:w-[140px] px-3 md:px-4 py-2 md:py-2.5 bg-background hover:bg-muted/50 border border-border rounded-lg text-xs md:text-sm font-semibold text-foreground transition-all"
                             >
                                 <span className="leading-none truncate">{filter === "All" ? "All Assets" : filter}</span>
-                                <ChevronDownIcon className="w-3 h-3 md:w-4 md:h-4 text-foreground ml-1 flex-shrink-0" />
+                                <ChevronDown className="w-3 h-3 md:w-4 md:h-4 text-foreground ml-1 flex-shrink-0" />
                             </button>
 
-                            {isDropdownOpen && (
+                            {isAssetDropdownOpen && (
                                 <>
-                                    <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsAssetDropdownOpen(false)} />
                                     <div className="absolute right-0 mt-2 w-full sm:w-[120px] md:w-[140px] bg-card border border-border rounded-xl shadow-xl z-20 py-1">
                                         {["All", "Equity", "MF", "Bond"].map((item) => (
                                             <button
                                                 key={item}
-                                                onClick={() => { setFilter(item); setIsDropdownOpen(false); }}
+                                                onClick={() => { setFilter(item); setIsAssetDropdownOpen(false); }}
                                                 className={`w-full text-left px-4 py-2.5 text-xs md:text-sm font-medium transition-colors ${filter === item
                                                     ? "text-emerald-500 bg-emerald-500/10"
                                                     : "text-muted-foreground hover:bg-muted"
@@ -148,63 +114,89 @@ const HoldingsTab = ({ clientId }: { clientId: string }) => {
                             )}
                         </div>
 
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Download Dropdown */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
+                                className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
+                            >
+                                <Download className="w-3 h-3 md:w-4 md:h-4" />
+                                <span className="leading-none">Download</span>
+                                <ChevronDown className={`w-3 h-3 md:w-4 md:h-4 transition-transform ${isDownloadDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isDownloadDropdownOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsDownloadDropdownOpen(false)} />
+                                    <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-xl shadow-xl z-20 py-1">
+                                        <button
+                                            onClick={handlePrint}
+                                            className="flex items-center w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                                        >
+                                            <Printer className="w-4 h-4 mr-2 text-muted-foreground" />
+                                            Print / Save as PDF
+                                        </button>
+                                        <button
+                                            onClick={handleDownloadExcel}
+                                            className="flex items-center w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                                        >
+                                            <FileText className="w-4 h-4 mr-2 text-muted-foreground" />
+                                            Export as Excel
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Table Section */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto print:overflow-visible">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50" style={{ minWidth: '200px' }}>Symbol</th>
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">ISIN</th>
-                            <th className="py-5 px-6 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Sector</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Available</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Discrepant</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Long Term</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Pledged (Margin)</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Quantity Pledged (Loan)</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Average Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Previous Closing Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unrealized P&L</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Unrealized P&L %</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50">Asset</th>
+                        <tr className="border-t border-b border-border print:border-gray-300">
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black" style={{ minWidth: '100px' }}>Symbol</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">ISIN</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Sector</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Quantity Available</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Quantity Discrepant</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Quantity Long Term</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Quantity Pledged (Margin)</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Quantity Pledged (Loan)</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Average Price</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Previous Closing Price</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Unrealized P&L</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Unrealized P&L %</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Asset</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-border text-sm">
+                    <tbody className="divide-y divide-border text-sm print:divide-gray-300">
                         {filteredHoldings.map((h, i) => (
-                            <tr key={i} className="hover:bg-muted/30 transition-colors">
+                            <tr key={i} className="hover:bg-muted/30 transition-colors print:hover:bg-transparent">
                                 <td className="py-5 px-6 whitespace-nowrap">
                                     <div className="flex flex-col">
-                                        <span className="font-bold text-foreground text-base">{h.symbol}</span>
-                                        {h.name && <span className="text-xs text-muted-foreground font-medium mt-0.5">{h.name}</span>}
+                                        <span className="font-bold text-foreground text-base print:text-black">{h.security}</span>
+                                        {h.name && <span className="text-xs text-muted-foreground font-medium mt-0.5 print:text-gray-600">{h.name}</span>}
                                     </div>
                                 </td>
-                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{h.isin}</td>
-                                <td className="py-5 px-6 text-muted-foreground font-medium whitespace-nowrap">{h.sector}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyAvailable}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyDiscrepant || 0}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyLongTerm || 0}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedMargin || 0}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qtyPledgedLoan || 0}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.avgPrice}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">{h.prevClosing}</td>
-                                <td className="py-5 px-6 text-right text-emerald-500 font-bold text-base whitespace-nowrap">{h.unrealizedPL}</td>
+                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.isin}</td>
+                                <td className="py-5 px-6 text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.sector}</td>
+                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.qtyAvailable}</td>
+                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.qtyDiscrepant || 0}</td>
+                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.qtyLongTerm || 0}</td>
+                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.qtyPledgedMargin || 0}</td>
+                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.qtyPledgedLoan || 0}</td>
+                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.avgPrice}</td>
+                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{h.prevClosing}</td>
+                                <td className="py-5 px-6 text-right text-emerald-500 font-bold text-base whitespace-nowrap print:text-black">{h.unrealizedPL}</td>
                                 <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500">
+                                    <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500 print:bg-transparent print:text-black print:border print:border-gray-300">
                                         {h.unrealizedPLPercent}%
                                     </span>
                                 </td>
                                 <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
+                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block print:bg-transparent print:text-gray-800 print:border-gray-300">
                                         {h.type}
                                     </span>
                                 </td>
@@ -218,52 +210,83 @@ const HoldingsTab = ({ clientId }: { clientId: string }) => {
     );
 };
 
-const TransactionsTab = ({ clientId }: { clientId: string }) => {
+const TransactionsTab = ({
+    clientId,
+    clientName,
+    rmName,
+    status
+}: {
+    clientId: string;
+    clientName?: string;
+    rmName?: string;
+    status?: string;
+}) => {
     const [filter, setFilter] = useState("All");
-    const [isDropdownOpen, setIsDropdownOpen] = useState(false);
-    const transactions = clientTransactionsData[clientId] || [];
+    const [isAssetDropdownOpen, setIsAssetDropdownOpen] = useState(false);
+    const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
+
+    // Default transactions for now
+    const transactions = mockRecentTransactions.map((t, i) => ({
+        ...t,
+        symbol: t.asset,
+        isin: 'INE' + Math.floor(Math.random() * 1000000),
+        tradeDate: t.date,
+        exchange: 'NSE',
+        segment: 'Equity',
+        series: 'EQ',
+        tradeType: t.type,
+        auction: 'No',
+        price: "₹" + t.amount,
+        tradeId: 'T' + (1000 + i),
+        orderId: 'O' + (2000 + i),
+        executionTime: t.date + ' 10:30:15',
+    }));
 
     const filteredTransactions = filter === "All"
         ? transactions
         : transactions.filter(t => t.segment === filter);
 
-    const handleDownload = () => {
-        const headers = ["Symbol", "ISIN", "Trade Date", "Exchange", "Segment", "Series", "Trade Type", "Auction", "Quantity", "Price", "Trade ID", "Order ID", "Order Execution Time", "Asset"];
-        const csvContent = [headers.join(","), ...filteredTransactions.map(row => [row.symbol, row.isin, row.tradeDate, row.exchange, row.segment, row.series, row.tradeType, row.auction, row.quantity, row.price, row.tradeId, row.orderId, row.executionTime, row.asset].join(","))].join("\n");
-        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-        const link = document.createElement("a");
-        link.setAttribute("href", URL.createObjectURL(blob));
-        link.setAttribute("download", `transactions_${clientId}_${filter.toLowerCase()}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+    const handleDownloadExcel = () => {
+        exportTransactionsToXLSX(filteredTransactions, {
+            clientName: clientName || 'Unknown Client',
+            clientId: clientId,
+            rmName: rmName,
+            status: status
+        });
+        setIsDownloadDropdownOpen(false);
     };
 
+    const handlePrint = () => {
+        window.print();
+        setIsDownloadDropdownOpen(false);
+    };
+
+
     return (
-        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden print:shadow-none print:border-none">
             {/* Header Section */}
-            <div className="p-4 md:p-6 pb-4 bg-background/50">
+            <div className="p-4 md:p-6 pb-4 bg-background/50 print:bg-transparent print:p-0">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <h2 className="text-lg md:text-xl font-bold text-foreground">Transaction History</h2>
-                    <div className="flex gap-2 md:gap-4 w-full sm:w-auto">
+                    <h2 className="text-lg md:text-xl font-bold text-foreground print:text-black">Transaction History</h2>
+                    <div className="flex gap-2 md:gap-4 w-full sm:w-auto print:hidden">
                         {/* Filter Dropdown */}
                         <div className="relative flex-1 sm:flex-none">
                             <button
-                                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                                onClick={() => setIsAssetDropdownOpen(!isAssetDropdownOpen)}
                                 className="flex items-center justify-between w-full sm:w-[120px] md:w-[140px] px-3 md:px-4 py-2 md:py-2.5 bg-background hover:bg-muted/50 border border-border rounded-lg text-xs md:text-sm font-semibold text-foreground transition-all"
                             >
                                 <span className="leading-none truncate">{filter === "All" ? "All Assets" : filter}</span>
-                                <ChevronDownIcon className="w-3 h-3 md:w-4 md:h-4 text-foreground ml-1 flex-shrink-0" />
+                                <ChevronDown className="w-3 h-3 md:w-4 md:h-4 text-foreground ml-1 flex-shrink-0" />
                             </button>
 
-                            {isDropdownOpen && (
+                            {isAssetDropdownOpen && (
                                 <>
-                                    <div className="fixed inset-0 z-10" onClick={() => setIsDropdownOpen(false)} />
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsAssetDropdownOpen(false)} />
                                     <div className="absolute right-0 mt-2 w-full sm:w-[120px] md:w-[140px] bg-card border border-border rounded-xl shadow-xl z-20 py-1">
                                         {["All", "Equity", "MF", "Bond"].map((item) => (
                                             <button
                                                 key={item}
-                                                onClick={() => { setFilter(item); setIsDropdownOpen(false); }}
+                                                onClick={() => { setFilter(item); setIsAssetDropdownOpen(false); }}
                                                 className={`w-full text-left px-4 py-2.5 text-xs md:text-sm font-medium transition-colors ${filter === item
                                                     ? "text-emerald-500 bg-emerald-500/10"
                                                     : "text-muted-foreground hover:bg-muted"
@@ -277,56 +300,82 @@ const TransactionsTab = ({ clientId }: { clientId: string }) => {
                             )}
                         </div>
 
-                        <button
-                            onClick={handleDownload}
-                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                        >
-                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4 mb-[2px]" />
-                            <span className="leading-none">Export</span>
-                        </button>
+                        {/* Download Dropdown */}
+                        <div className="relative">
+                            <button
+                                onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
+                                className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
+                            >
+                                <Download className="w-3 h-3 md:w-4 md:h-4" />
+                                <span className="leading-none">Download</span>
+                                <ChevronDown className={`w-3 h-3 md:w-4 md:h-4 transition-transform ${isDownloadDropdownOpen ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {isDownloadDropdownOpen && (
+                                <>
+                                    <div className="fixed inset-0 z-10" onClick={() => setIsDownloadDropdownOpen(false)} />
+                                    <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-xl shadow-xl z-20 py-1">
+                                        <button
+                                            onClick={handlePrint}
+                                            className="flex items-center w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                                        >
+                                            <Printer className="w-4 h-4 mr-2 text-muted-foreground" />
+                                            Print / Save as PDF
+                                        </button>
+                                        <button
+                                            onClick={handleDownloadExcel}
+                                            className="flex items-center w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                                        >
+                                            <FileText className="w-4 h-4 mr-2 text-muted-foreground" />
+                                            Export as Excel
+                                        </button>
+                                    </div>
+                                </>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
 
             {/* Table Section */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto print:overflow-visible">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Symbol</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">ISIN</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Trade Date</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Exchange</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Segment</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Series</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Trade Type</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Auction</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Quantity</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Price</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Trade ID</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Order ID</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Order Execution Time</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Asset</th>
+                        <tr className="border-t border-b border-border print:border-gray-300">
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Symbol</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">ISIN</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Trade Date</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Exchange</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Segment</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Series</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Trade Type</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Auction</th>
+                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Quantity</th>
+                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Price</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Trade ID</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Order ID</th>
+                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Order Execution Time</th>
+                            <th className="py-5 px-6 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-transparent print:text-black">Asset</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-border text-sm">
+                    <tbody className="divide-y divide-border text-sm print:divide-gray-300">
                         {filteredTransactions.map((txn, i) => (
-                            <tr key={i} className="hover:bg-primary/5 transition-colors">
-                                <td className="py-5 px-6 font-bold text-foreground text-base whitespace-nowrap">{txn.symbol}</td>
-                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{txn.isin}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.tradeDate}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.exchange}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.segment || "-"}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.series || "-"}</td>
-                                <td className="py-5 px-6 whitespace-nowrap"><span className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-block min-w-[60px] text-center ${txn.tradeType === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>{txn.tradeType}</span></td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.auction || "No"}</td>
-                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{txn.quantity}</td>
-                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">{txn.price}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.tradeId}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.orderId || "-"}</td>
-                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap">{txn.executionTime || "-"}</td>
+                            <tr key={i} className="hover:bg-primary/5 transition-colors print:hover:bg-transparent">
+                                <td className="py-5 px-6 font-bold text-foreground text-base whitespace-nowrap print:text-black">{txn.symbol}</td>
+                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap print:text-gray-600">{txn.isin}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-black">{txn.tradeDate}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-black">{txn.exchange}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-black">{txn.segment || "-"}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-black">{txn.series || "-"}</td>
+                                <td className="py-5 px-6 whitespace-nowrap"><span className={`px-3 py-1.5 rounded-md text-xs font-semibold inline-block min-w-[60px] text-center ${txn.tradeType === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'} print:bg-transparent print:text-black print:border print:border-gray-300`}>{txn.tradeType}</span></td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-black">{txn.auction || "No"}</td>
+                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap print:text-black">{txn.quantity}</td>
+                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap print:text-black">{txn.price}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-gray-600">{txn.tradeId}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-gray-600">{txn.orderId || "-"}</td>
+                                <td className="py-5 px-6 text-foreground/80 font-medium whitespace-nowrap print:text-gray-600">{txn.executionTime || "-"}</td>
                                 <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block">
+                                    <span className="px-3 py-1.5 rounded bg-muted/50 border border-border/50 text-xs font-semibold text-muted-foreground inline-block print:bg-transparent print:text-gray-800 print:border-gray-300">
                                         {txn.asset || txn.segment}
                                     </span>
                                 </td>
@@ -351,28 +400,152 @@ const PlaceholderTab = ({ title }: { title: string }) => (
     </div>
 );
 
+const USE_LOCAL_AUTH = import.meta.env.VITE_USE_LOCAL_AUTH === 'true';
+
 export default function BMReports() {
+    const [subordinates, setSubordinates] = useState<Subordinate[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    // Selection state - IDs are numbers in mock logic but let's handle string/number carefully
+    const [selectedRM, setSelectedRM] = useState<number | null>(null);
+    const [selectedClient, setSelectedClient] = useState<number | null>(null);
+
     const [activeTab, setActiveTab] = useState<Tab>("Holdings");
-    const [selectedRM, setSelectedRM] = useState<string | null>(null);
-    const [selectedClient, setSelectedClient] = useState<string | null>(null);
     const [isRMDropdownOpen, setIsRMDropdownOpen] = useState(false);
     const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
 
-    const selectedRMData = bmRMsData.find(r => r.rmId === selectedRM);
-    const clientsUnderRM = selectedRM ? rmClientsMap[selectedRM] || [] : [];
-    const allClients = Object.values(rmClientsMap).flat();
-    const displayClients = selectedRM ? clientsUnderRM : allClients;
-    const selectedClientData = displayClients.find((c: any) => c.clientId === selectedClient);
+    const [location] = useLocation();
+
+    // Fetch subordinates (Same logic as BMClients.tsx)
+    const fetchSubordinates = async () => {
+        setLoading(true);
+        try {
+            if (USE_LOCAL_AUTH) {
+                // Use mock data for local development
+                const mockData: Subordinate[] = [
+                    ...mockSubordinates.bm.relationshipManagers.map(rm => ({
+                        id: rm.id,
+                        name: rm.name,
+                        email: rm.email,
+                        role: 'rm',
+                        status: 'active',
+                        parent_id: undefined,
+                        clientCount: rm.clientCount,
+                        portfolioValue: rm.portfolioValue
+                    })),
+                    ...mockSubordinates.rm.clients.map(client => ({
+                        id: client.id,
+                        client_id: client.clientId,
+                        name: client.name,
+                        email: client.email,
+                        role: 'client',
+                        status: client.status,
+                        parent_id: 201, // Assign to first RM
+                        portfolioValue: client.portfolioValue
+                    })),
+                    ...mockSubordinates.rm.clients.map((client, idx) => ({
+                        id: client.id + 100,
+                        client_id: `CL01${idx + 1}`, // CL011 onwards, matching BMClients logic roughly (it was CL00...)
+                        // Note: BMClients had `CL00${client.id - 200}` which is CL00101...
+                        // Let's use simpler logic here: CL01 + idx
+                        name: client.name.replace('Aarav', 'Rohan').replace('Aditi', 'Priya'),
+                        email: client.email.replace('aarav', 'rohan').replace('aditi', 'priya'),
+                        role: 'client',
+                        status: 'active',
+                        parent_id: 202, // Assign to second RM
+                        portfolioValue: client.portfolioValue ? client.portfolioValue * 1.2 : 0
+                    })),
+                ];
+                setSubordinates(mockData);
+            } else {
+                const data = await userService.getSubordinates();
+                setSubordinates(data);
+            }
+        } catch (error) {
+            console.error("Failed to fetch subordinates:", error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchSubordinates();
+    }, []);
+
+    // Derived lists
+    const relationshipManagers = subordinates
+        .filter(s => s.role === 'rm')
+        .map(s => ({
+            id: s.id,
+            name: s.name,
+            clientCount: s.clientCount || 0,
+            portfolioValue: s.portfolioValue || 0,
+            formattedAUM: s.portfolioValue ? `₹${(s.portfolioValue / 10000000).toFixed(2)} Cr` : '₹0 Cr'
+        }));
+
+    const clients = selectedRM
+        ? subordinates
+            .filter(s => s.role === 'client' && s.parent_id === selectedRM)
+        : [];
+
+    const selectedRMData = relationshipManagers.find(rm => rm.id === selectedRM);
+    const selectedClientData = subordinates.find(s => s.id === selectedClient);
+
+    // Parse URL params
+    useEffect(() => {
+        if (!loading && subordinates.length > 0) {
+            const params = new URLSearchParams(window.location.search);
+            const clientCode = params.get('clientCode');
+
+            if (clientCode) {
+                // Find client
+                const client = subordinates.find(s => s.role === 'client' && s.client_id === clientCode);
+                if (client) {
+                    setSelectedClient(client.id);
+                    if (client.parent_id) {
+                        setSelectedRM(client.parent_id);
+                    }
+                }
+            }
+        }
+    }, [loading, subordinates]);
+
+    const resetSelections = (level: 'rm' | 'client') => {
+        if (level === 'rm') { setSelectedRM(null); setSelectedClient(null); }
+        if (level === 'client') { setSelectedClient(null); }
+    };
+
+    // Calculate RMs stats for the overview table
+    const rmStats = relationshipManagers.map(rm => {
+        // Calculate dynamic stats from clients if available, else usage mockish values
+        const rmClients = subordinates.filter(s => s.role === 'client' && s.parent_id === rm.id);
+        const actualClientCount = rmClients.length > 0 ? rmClients.length : rm.clientCount;
+
+        return {
+            ...rm,
+            clientCount: actualClientCount,
+            todayChange: "+₹" + (Math.random() * 50000).toFixed(0),
+            todayChangePercent: "+" + (Math.random() * 0.5).toFixed(2) + "%",
+            avgXirr: (12 + Math.random() * 8).toFixed(1) + "%"
+        };
+    });
 
     return (
         <DashboardLayout role="bm">
             <div className="max-w-7xl mx-auto w-full p-8 min-h-screen">
-                <div className="flex items-center justify-between mb-8">
+                {/* Print Header (Visible only in print) */}
+                <div className="hidden print:block mb-8 border-b pb-4">
+                    <img src="/logo.png" alt="Company Logo" className="h-12 w-auto mb-4" />
+                    <h1 className="text-2xl font-bold text-black">Aionion Investment Services</h1>
+                    <p className="text-sm text-gray-600">Client Report</p>
+                </div>
+
+                <div className="flex items-center justify-between mb-8 print:hidden">
                     <h1 className="text-4xl font-display font-bold text-foreground">Reports</h1>
                 </div>
 
-                {/* Selector Card */}
-                <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-6 mb-8">
+                {/* Selector Card - Hidden on Print */}
+                <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-6 mb-8 print:hidden">
                     <h3 className="text-lg font-bold text-foreground mb-4">Select View</h3>
                     <div className="flex flex-wrap gap-4">
                         {/* RM Selector */}
@@ -382,27 +555,27 @@ export default function BMReports() {
                                 onClick={() => setIsRMDropdownOpen(!isRMDropdownOpen)}
                                 className="flex items-center justify-between w-[200px] px-4 py-2.5 bg-background hover:bg-muted/50 border border-border rounded-lg text-sm font-semibold text-foreground transition-all"
                             >
-                                <span className="truncate">{selectedRM ? selectedRMData?.rmName : "All RMs"}</span>
-                                <ChevronDownIcon className="w-4 h-4 text-foreground ml-2 flex-shrink-0" />
+                                <span className="truncate">{selectedRM ? selectedRMData?.name : "All RMs"}</span>
+                                <ChevronDown className="w-4 h-4 text-foreground ml-2 flex-shrink-0" />
                             </button>
                             {isRMDropdownOpen && (
                                 <>
                                     <div className="fixed inset-0 z-10" onClick={() => setIsRMDropdownOpen(false)} />
                                     <div className="absolute left-0 mt-2 w-[200px] bg-card border border-border rounded-xl shadow-xl z-20 py-1 max-h-60 overflow-y-auto">
                                         <button
-                                            onClick={() => { setSelectedRM(null); setSelectedClient(null); setIsRMDropdownOpen(false); }}
+                                            onClick={() => { resetSelections('rm'); setIsRMDropdownOpen(false); }}
                                             className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${!selectedRM ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground hover:bg-muted"}`}
                                         >
                                             All RMs
                                         </button>
-                                        {bmRMsData.map((rm) => (
+                                        {relationshipManagers.map((rm) => (
                                             <button
-                                                key={rm.rmId}
-                                                onClick={() => { setSelectedRM(rm.rmId); setSelectedClient(null); setIsRMDropdownOpen(false); }}
-                                                className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${selectedRM === rm.rmId ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground hover:bg-muted"}`}
+                                                key={rm.id}
+                                                onClick={() => { setSelectedRM(rm.id); setSelectedClient(null); setIsRMDropdownOpen(false); }}
+                                                className={`w-full text-left px-4 py-2.5 text-sm font-medium transition-colors ${selectedRM === rm.id ? "text-emerald-500 bg-emerald-500/10" : "text-muted-foreground hover:bg-muted"}`}
                                             >
                                                 <div className="flex justify-between">
-                                                    <span>{rm.rmName}</span>
+                                                    <span>{rm.name}</span>
                                                     <span className="text-xs text-muted-foreground">{rm.clientCount} clients</span>
                                                 </div>
                                             </button>
@@ -413,71 +586,68 @@ export default function BMReports() {
                         </div>
 
                         {/* Client Selector */}
-                        <div className="relative">
-                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Client</label>
-                            <button
-                                onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
-                                className="flex items-center justify-between w-[220px] px-4 py-2.5 bg-background hover:bg-muted/50 border border-border rounded-lg text-sm font-semibold text-foreground transition-all"
-                            >
-                                <span className="truncate">{selectedClient ? selectedClientData?.clientName : "Select a client..."}</span>
-                                <ChevronDownIcon className="w-4 h-4 text-foreground ml-2 flex-shrink-0" />
-                            </button>
-                            {isClientDropdownOpen && (
-                                <>
-                                    <div className="fixed inset-0 z-10" onClick={() => setIsClientDropdownOpen(false)} />
-                                    <div className="absolute left-0 mt-2 w-[220px] bg-card border border-border rounded-xl shadow-xl z-20 py-1 max-h-72 overflow-y-auto">
-                                        {displayClients.map((client: any) => (
-                                            <button
-                                                key={client.clientId}
-                                                onClick={() => {
-                                                    setSelectedClient(client.clientId);
-                                                    if (!selectedRM) {
-                                                        const rmKey = Object.keys(rmClientsMap).find(key =>
-                                                            rmClientsMap[key].some(c => c.clientId === client.clientId)
-                                                        );
-                                                        if (rmKey) setSelectedRM(rmKey);
-                                                    }
-                                                    setIsClientDropdownOpen(false);
-                                                }}
-                                                className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedClient === client.clientId ? "text-emerald-500 bg-emerald-500/10 font-semibold" : "text-foreground hover:bg-muted"}`}
-                                            >
-                                                <div className="flex justify-between items-center">
-                                                    <span>{client.clientName}</span>
-                                                    <span className="text-xs text-muted-foreground">{client.portfolioValue}</span>
-                                                </div>
-                                            </button>
-                                        ))}
-                                        {displayClients.length === 0 && (
-                                            <div className="px-4 py-3 text-sm text-muted-foreground">No clients available</div>
-                                        )}
-                                    </div>
-                                </>
-                            )}
-                        </div>
+                        {selectedRM && (
+                            <div className="relative">
+                                <label className="block text-xs font-medium text-muted-foreground mb-1.5">Client</label>
+                                <button
+                                    onClick={() => setIsClientDropdownOpen(!isClientDropdownOpen)}
+                                    className="flex items-center justify-between w-[220px] px-4 py-2.5 bg-background hover:bg-muted/50 border border-border rounded-lg text-sm font-semibold text-foreground transition-all"
+                                >
+                                    <span className="truncate">{selectedClient ? selectedClientData?.name : "Select a client..."}</span>
+                                    <ChevronDown className="w-4 h-4 text-foreground ml-2 flex-shrink-0" />
+                                </button>
+                                {isClientDropdownOpen && (
+                                    <>
+                                        <div className="fixed inset-0 z-10" onClick={() => setIsClientDropdownOpen(false)} />
+                                        <div className="absolute left-0 mt-2 w-[220px] bg-card border border-border rounded-xl shadow-xl z-20 py-1 max-h-72 overflow-y-auto">
+                                            {clients.map((client) => (
+                                                <button
+                                                    key={client.id}
+                                                    onClick={() => {
+                                                        setSelectedClient(client.id);
+                                                        setIsClientDropdownOpen(false);
+                                                    }}
+                                                    className={`w-full text-left px-4 py-2.5 text-sm transition-colors ${selectedClient === client.id ? "text-emerald-500 bg-emerald-500/10 font-semibold" : "text-foreground hover:bg-muted"}`}
+                                                >
+                                                    <div className="flex justify-between items-center">
+                                                        <span>{client.name}</span>
+                                                        <span className="text-xs text-muted-foreground">{client.client_id}</span>
+                                                    </div>
+                                                </button>
+                                            ))}
+                                            {clients.length === 0 && (
+                                                <div className="px-4 py-3 text-sm text-muted-foreground">No clients available</div>
+                                            )}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
 
                 {selectedClient ? (
                     <>
                         {/* Selected Client Info */}
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center justify-between mb-6 print:mb-8">
                             <div>
-                                <h2 className="text-2xl font-bold text-foreground">{selectedClientData?.clientName}</h2>
-                                <p className="text-sm text-muted-foreground">
-                                    {selectedRM && `RM: ${selectedRMData?.rmName} • `}
-                                    Portfolio: {selectedClientData?.portfolioValue} • XIRR: {selectedClientData?.xirr}
+                                <h2 className="text-2xl font-bold text-foreground print:text-black">{selectedClientData?.name}</h2>
+                                <p className="text-sm text-muted-foreground print:text-gray-600">
+                                    {selectedRM && `RM: ${selectedRMData?.name} • `}
+                                    Client ID: {selectedClientData?.client_id} • Status: {selectedClientData?.status}
                                 </p>
+                                <p className="hidden print:block text-sm text-gray-600 mt-1">Generated on: {new Date().toLocaleDateString()}</p>
                             </div>
                             <button
                                 onClick={() => setSelectedClient(null)}
-                                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors print:hidden"
                             >
                                 ← Change Client
                             </button>
                         </div>
 
                         {/* Tab Navigation */}
-                        <div className="flex overflow-x-auto gap-3 mb-8 pb-2 no-scrollbar">
+                        <div className="flex overflow-x-auto gap-3 mb-8 pb-2 no-scrollbar print:hidden">
                             {(["Holdings", "Transactions", "Ledger", "Dividends", "Tax P&L", "Capital Gains", "XIRR"] as Tab[]).map((tab) => (
                                 <div key={tab} className="shrink-0">
                                     <TabButton active={activeTab === tab} onClick={() => setActiveTab(tab)}>
@@ -497,8 +667,18 @@ export default function BMReports() {
                                     exit={{ opacity: 0, y: -10 }}
                                     transition={{ duration: 0.15 }}
                                 >
-                                    {activeTab === "Holdings" && <HoldingsTab clientId={selectedClient} />}
-                                    {activeTab === "Transactions" && <TransactionsTab clientId={selectedClient} />}
+                                    {activeTab === "Holdings" && <HoldingsTab
+                                        clientId={selectedClientData?.client_id || ""}
+                                        clientName={selectedClientData?.name}
+                                        rmName={selectedRMData?.name}
+                                        status={selectedClientData?.status}
+                                    />}
+                                    {activeTab === "Transactions" && <TransactionsTab
+                                        clientId={selectedClientData?.client_id || ""}
+                                        clientName={selectedClientData?.name}
+                                        rmName={selectedRMData?.name}
+                                        status={selectedClientData?.status}
+                                    />}
                                     {activeTab === "Ledger" && <PlaceholderTab title="Transaction Ledger" />}
                                     {activeTab === "XIRR" && <PlaceholderTab title="XIRR Report" />}
                                     {activeTab === "Dividends" && <PlaceholderTab title="Dividends Report" />}
@@ -510,7 +690,7 @@ export default function BMReports() {
                     </>
                 ) : (<>
                     {!selectedRM && (
-                        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden mb-8">
+                        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden mb-8 print:hidden">
                             <div className="p-6 bg-background/50 border-b border-border">
                                 <h2 className="text-xl font-bold text-foreground">Relationship Managers</h2>
                             </div>
@@ -528,18 +708,18 @@ export default function BMReports() {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-border text-sm">
-                                        {bmRMsData.map((rm) => {
+                                        {rmStats.map((rm) => {
                                             const todayIsPositive = !rm.todayChange.startsWith('-');
                                             return (
-                                                <tr key={rm.rmId} className="hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => setSelectedRM(rm.rmId)}>
-                                                    <td className="py-4 px-6 font-bold text-foreground">{rm.rmName}</td>
-                                                    <td className="py-4 px-6 text-muted-foreground">{rm.rmId}</td>
+                                                <tr key={rm.id} className="hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => setSelectedRM(rm.id)}>
+                                                    <td className="py-4 px-6 font-bold text-foreground">{rm.name}</td>
+                                                    <td className="py-4 px-6 text-muted-foreground">RM00{rm.id % 200}</td>
                                                     <td className="py-4 px-6 text-center">
                                                         <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-blue-500/10 text-blue-500">
                                                             {rm.clientCount}
                                                         </span>
                                                     </td>
-                                                    <td className="py-4 px-6 text-right font-bold text-foreground">{rm.totalAUM}</td>
+                                                    <td className="py-4 px-6 text-right font-bold text-foreground">{rm.formattedAUM}</td>
                                                     <td className="py-4 px-6 text-right">
                                                         <span className={`font-bold ${todayIsPositive ? 'text-emerald-500' : 'text-red-500'}`}>
                                                             {rm.todayChange}
@@ -556,9 +736,9 @@ export default function BMReports() {
                                                     <td className="py-4 px-6 text-center">
                                                         <button
                                                             className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 rounded-lg text-xs font-semibold text-primary transition-colors"
-                                                            onClick={(e) => { e.stopPropagation(); setSelectedRM(rm.rmId); }}
+                                                            onClick={(e) => { e.stopPropagation(); setSelectedRM(rm.id); }}
                                                         >
-                                                            <EyeIcon className="w-3.5 h-3.5" />
+                                                            <Eye className="w-3.5 h-3.5" />
                                                             View
                                                         </button>
                                                     </td>
@@ -578,9 +758,9 @@ export default function BMReports() {
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.3 }}
                         >
-                            <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center justify-between mb-4 print:hidden">
                                 <h2 className="text-2xl font-bold text-foreground">
-                                    {selectedRMData?.rmName}'s Clients
+                                    {selectedRMData?.name}'s Clients
                                 </h2>
                                 <button
                                     onClick={() => setSelectedRM(null)}
@@ -590,7 +770,7 @@ export default function BMReports() {
                                 </button>
                             </div>
 
-                            <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+                            <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden print:hidden">
                                 <div className="overflow-x-auto">
                                     <table className="w-full text-left border-collapse">
                                         <thead>
@@ -605,35 +785,37 @@ export default function BMReports() {
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-border text-sm">
-                                            {clientsUnderRM.map((client: any) => {
-                                                const todayIsPositive = !client.todayChange.startsWith('-');
-                                                const returnsIsPositive = !client.returnsPercent.startsWith('-');
+                                            {clients.map((client) => {
+                                                const todayChange = "+₹" + (Math.random() * 15000).toFixed(0);
+                                                const returnsPercent = "+" + (10 + Math.random() * 10).toFixed(1) + "%";
+                                                const xirr = (8 + Math.random() * 8).toFixed(1) + "%";
+
                                                 return (
-                                                    <tr key={client.clientId} className="hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => setSelectedClient(client.clientId)}>
-                                                        <td className="py-4 px-6 font-bold text-foreground">{client.clientName}</td>
-                                                        <td className="py-4 px-6 text-muted-foreground">{client.clientId}</td>
-                                                        <td className="py-4 px-6 text-right font-bold text-foreground">{client.portfolioValue}</td>
+                                                    <tr key={client.id} className="hover:bg-primary/5 transition-colors cursor-pointer" onClick={() => setSelectedClient(client.id)}>
+                                                        <td className="py-4 px-6 font-bold text-foreground">{client.name}</td>
+                                                        <td className="py-4 px-6 text-muted-foreground">{client.client_id}</td>
+                                                        <td className="py-4 px-6 text-right font-bold text-foreground">₹{(Math.random() * 50).toFixed(1)} L</td>
                                                         <td className="py-4 px-6 text-right">
-                                                            <span className={`font-bold ${todayIsPositive ? 'text-emerald-500' : 'text-red-500'}`}>
-                                                                {client.todayChange}
-                                                            </span>
-                                                        </td>
-                                                        <td className="py-4 px-6 text-center">
-                                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${returnsIsPositive ? 'bg-emerald-500/10 text-emerald-500' : 'bg-red-500/10 text-red-500'}`}>
-                                                                {client.returnsPercent}
+                                                            <span className="font-bold text-emerald-500">
+                                                                {todayChange}
                                                             </span>
                                                         </td>
                                                         <td className="py-4 px-6 text-center">
                                                             <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500">
-                                                                {client.xirr}
+                                                                {returnsPercent}
+                                                            </span>
+                                                        </td>
+                                                        <td className="py-4 px-6 text-center">
+                                                            <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold bg-emerald-500/10 text-emerald-500">
+                                                                {xirr}
                                                             </span>
                                                         </td>
                                                         <td className="py-4 px-6 text-center">
                                                             <button
                                                                 className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/20 rounded-lg text-xs font-semibold text-primary transition-colors"
-                                                                onClick={(e) => { e.stopPropagation(); setSelectedClient(client.clientId); }}
+                                                                onClick={(e) => { e.stopPropagation(); setSelectedClient(client.id); }}
                                                             >
-                                                                <EyeIcon className="w-3.5 h-3.5" />
+                                                                <Eye className="w-3.5 h-3.5" />
                                                                 View
                                                             </button>
                                                         </td>

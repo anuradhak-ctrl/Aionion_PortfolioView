@@ -1,4 +1,7 @@
 import axios from 'axios';
+import { mockEquityHoldings } from '@/utils/mockData';
+
+const USE_LOCAL_AUTH = import.meta.env.VITE_USE_LOCAL_AUTH === 'true';
 
 // Get base URL from environment or default to localhost
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
@@ -26,6 +29,14 @@ api.interceptors.request.use(
 );
 
 export const getPortfolioData = async (clientCode?: string) => {
+    if (USE_LOCAL_AUTH) {
+        console.log('🔓 PortfolioService: Using mock portfolio data');
+        return {
+            success: true,
+            clientCode: clientCode || 'MOCK_USER',
+            data: mockEquityHoldings
+        };
+    }
     try {
         const url = clientCode ? `/users/portfolio?clientCode=${clientCode}` : '/users/portfolio';
         const response = await api.get(url);

@@ -50,7 +50,7 @@ export function DashboardLayout({ children, role = "client" }: DashboardLayoutPr
             {/* Main Content Area */}
             <main className="flex-1 flex flex-col min-h-screen overflow-x-hidden">
                 {/* Header */}
-                <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-xl border-b border-border/50 px-6 h-20 flex items-center">
+                <header className="sticky top-0 z-20 bg-background/80 backdrop-blur-xl border-b border-border/50 px-6 h-20 flex items-center print:hidden">
                     <div className="w-full flex flex-col md:flex-row md:items-center justify-between gap-4">
                         {/* Search */}
                         <div className="relative w-full md:w-96 pl-12 md:pl-0">

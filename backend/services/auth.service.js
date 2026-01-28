@@ -56,6 +56,33 @@ export const verifyToken = async (token) => {
 
     const { header, payload } = decoded;
 
+    // Check if this is a local dummy user token (USE_LOCAL_AUTH=true)
+    if (payload.isDummyUser && process.env.USE_LOCAL_AUTH === 'true') {
+      console.log('🔓 Verifying local dummy user token');
+      try {
+        const secret = process.env.JWT_SECRET || 'local-dev-secret-key';
+        const verified = jwt.verify(token, secret);
+
+        // Return verified user info for dummy users
+        resolve({
+          sub: verified.sub,
+          email: verified.email,
+          name: verified.name || verified.email,
+          username: verified.email,
+          role: verified.role,
+          groups: [],
+          amr: [],
+          poolType: verified.poolType || 'client',
+          exp: verified.exp,
+          iat: verified.iat
+        });
+      } catch (verifyError) {
+        console.error('Local JWT verification failed:', verifyError.message);
+        reject(new Error('Invalid or expired local token'));
+      }
+      return;
+    }
+
     // Validate issuer
     const expectedIssuer = `https://cognito-idp.${region}.amazonaws.com/${userPoolId}`;
     if (payload.iss !== expectedIssuer) {

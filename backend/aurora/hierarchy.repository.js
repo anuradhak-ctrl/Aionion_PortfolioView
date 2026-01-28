@@ -7,6 +7,7 @@
  */
 
 import { query, queryRows, queryOne } from './connection.js';
+import hierarchyValidation from '../services/hierarchy-validation.service.js';
 
 // ==================== HIERARCHY QUERIES ====================
 
@@ -29,17 +30,18 @@ export const findSubordinates = async (userId, includeNested = true) => {
     if (includeNested) {
         const sql = `
             WITH RECURSIVE subordinates AS (
-                SELECT id, client_id, email, name, role, status, parent_id, created_at, 1 as level
+                SELECT id, client_id, email, name, role, status, parent_id, created_at, 1 as level, ARRAY[id] as path
                 FROM users
                 WHERE parent_id = $1
                 
                 UNION ALL
                 
-                SELECT u.id, u.client_id, u.email, u.name, u.role, u.status, u.parent_id, u.created_at, s.level + 1
+                SELECT u.id, u.client_id, u.email, u.name, u.role, u.status, u.parent_id, u.created_at, s.level + 1, s.path || u.id
                 FROM users u
                 INNER JOIN subordinates s ON u.parent_id = s.id
+                WHERE s.level < 10 AND NOT (u.id = ANY(s.path))
             )
-            SELECT * FROM subordinates ORDER BY level, name
+            SELECT id, client_id, email, name, role, status, parent_id, created_at, level FROM subordinates ORDER BY level, name
         `;
         return queryRows(sql, [userId]);
     } else {
@@ -60,15 +62,16 @@ export const findSubordinates = async (userId, includeNested = true) => {
 export const countSubordinatesByRole = async (userId) => {
     const sql = `
         WITH RECURSIVE subordinates AS (
-            SELECT id, role, parent_id
+            SELECT id, role, parent_id, 1 as depth, ARRAY[id] as path
             FROM users
             WHERE parent_id = $1
             
             UNION ALL
             
-            SELECT u.id, u.role, u.parent_id
+            SELECT u.id, u.role, u.parent_id, s.depth + 1, s.path || u.id
             FROM users u
             INNER JOIN subordinates s ON u.parent_id = s.id
+            WHERE s.depth < 10 AND NOT (u.id = ANY(s.path))
         )
         SELECT role, COUNT(*)::int as count
         FROM subordinates
@@ -84,15 +87,16 @@ export const countSubordinatesByRole = async (userId) => {
 export const findAncestors = async (userId) => {
     const sql = `
         WITH RECURSIVE ancestors AS (
-            SELECT id, name, role, parent_id, 1 as level
+            SELECT id, name, role, parent_id, 1 as level, ARRAY[id] as path
             FROM users
             WHERE id = (SELECT parent_id FROM users WHERE id = $1)
             
             UNION ALL
             
-            SELECT u.id, u.name, u.role, u.parent_id, a.level + 1
+            SELECT u.id, u.name, u.role, u.parent_id, a.level + 1, a.path || u.id
             FROM users u
             INNER JOIN ancestors a ON u.id = a.parent_id
+            WHERE a.level < 10 AND NOT (u.id = ANY(a.path))
         )
         SELECT id, name, role
         FROM ancestors
@@ -131,15 +135,16 @@ export const canAccess = async (accessorId, targetId) => {
     // Check if target is a descendant of accessor
     const sql = `
         WITH RECURSIVE subordinates AS (
-            SELECT id
+            SELECT id, 1 as depth, ARRAY[id] as path
             FROM users
             WHERE parent_id = $1
             
             UNION ALL
             
-            SELECT u.id
+            SELECT u.id, s.depth + 1, s.path || u.id
             FROM users u
             INNER JOIN subordinates s ON u.parent_id = s.id
+            WHERE s.depth < 10 AND NOT (u.id = ANY(s.path))
         )
         SELECT 1 FROM subordinates WHERE id = $2
     `;
@@ -165,19 +170,24 @@ export const findAccessibleUsers = async (accessorId, role, filters = {}) => {
         params = [];
     } else {
         // Recursive CTE to get self + all descendants
+        // WITH CYCLE DETECTION to prevent infinite loops from circular references
         sql = `
             WITH RECURSIVE accessible_users AS (
-                SELECT id, client_id, email, name, role, status, branch_id, zone_id
+                -- Base case: Start with the accessor
+                SELECT id, client_id, email, name, role, status, branch_id, zone_id, 1 as depth, ARRAY[id] as path
                 FROM users
                 WHERE id = $1
                 
                 UNION ALL
                 
-                SELECT u.id, u.client_id, u.email, u.name, u.role, u.status, u.branch_id, u.zone_id
+                -- Recursive case: Get subordinates
+                SELECT u.id, u.client_id, u.email, u.name, u.role, u.status, u.branch_id, u.zone_id, a.depth + 1, a.path || u.id
                 FROM users u
                 INNER JOIN accessible_users a ON u.parent_id = a.id
+                WHERE a.depth < 10  -- Max depth limit to prevent runaway queries
+                  AND NOT (u.id = ANY(a.path))  -- Cycle detection: prevent revisiting same user
             )
-            SELECT * FROM accessible_users WHERE 1=1
+            SELECT id, client_id, email, name, role, status, branch_id, zone_id FROM accessible_users WHERE 1=1
         `;
         params = [accessorId];
     }
@@ -215,6 +225,18 @@ export const findAccessibleUsers = async (accessorId, role, filters = {}) => {
  * Assign user to parent
  */
 export const assignParent = async (userId, parentId) => {
+    // Get user role for validation
+    const user = await queryOne('SELECT id, role FROM users WHERE id = $1', [userId]);
+    if (!user) {
+        throw new Error('User not found');
+    }
+
+    // VALIDATE HIERARCHY
+    const validation = await hierarchyValidation.validateParentAssignment(userId, parentId, user.role);
+    if (!validation.valid) {
+        throw new Error(`Hierarchy validation failed: ${validation.errors.join('; ')}`);
+    }
+
     const sql = `
         UPDATE users 
         SET parent_id = $1, updated_at = NOW()

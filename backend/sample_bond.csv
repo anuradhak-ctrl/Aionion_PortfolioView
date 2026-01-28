@@ -1,0 +1,6 @@
+client_id,Bond Name,ISIN,Issuer Name,Bond type,Invested/ Principal Amount,Issue Date,Purchase Date,Coupon Rate,Coupon Frequency,Maturity Date,Call Date,YTM %,YTC %
+CLI001,HDFC Bank Bond,INE040A08041,HDFC Bank,Corporate,100000,2020-01-15,2020-01-20,8.5,Annual,2025-01-15,,7.8,
+CLI001,ICICI Bank Bond,INE090A08052,ICICI Bank,Corporate,150000,2021-03-10,2021-03-15,7.25,Semi-Annual,2026-03-10,2024-03-10,6.9,7.2
+CLI002,SBI Bond Series 2023,INE062A08053,State Bank of India,Corporate,200000,2023-06-01,2023-06-05,7.75,Quarterly,2028-06-01,,7.5,
+CLI002,Tata Capital Bond,INE123A08064,Tata Capital,Corporate,175000,2022-09-15,2022-09-20,8.0,Semi-Annual,2027-09-15,,7.6,
+CLI003,Bajaj Finance Bond,INE296A08075,Bajaj Finance,Corporate,250000,2023-12-01,2023-12-05,8.25,Annual,2028-12-01,2026-12-01,7.9,8.1

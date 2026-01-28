@@ -12,8 +12,10 @@ import {
   Building2,
   Map,
   BarChart3,
-  ShieldCheck
+  ShieldCheck,
+  Settings
 } from "lucide-react";
+
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -110,6 +112,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
       );
     }
 
+
     return items;
   };
 
@@ -124,7 +127,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
 
   const NavContent = () => (
     <div className="flex flex-col h-full bg-white dark:bg-[#1e293b]">
-      <div className="h-20 border-b border-border/50 flex items-center justify-center">
+      <div className="h-20 border-b border-border/50 flex items-center justify-center shrink-0">
         <div className="flex items-center justify-center gap-3">
           <img
             src="/logo.png"
@@ -139,7 +142,7 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
         </div>
       </div>
 
-      <nav className="p-4 space-y-2">
+      <nav className="flex-1 p-4 space-y-2 overflow-y-auto">
         {navItems.map((item) => {
           const isActive = location === item.href;
           return (
@@ -162,9 +165,6 @@ export function Sidebar({ activeRole = "client" }: SidebarProps) {
           );
         })}
       </nav>
-
-      {/* Spacer to push profile section to bottom */}
-      <div className="flex-1"></div>
 
       <div className="p-4 border-t border-border/50">
         <div className="flex items-center gap-3 p-3 rounded-xl hover:bg-secondary/50 transition-colors cursor-pointer mb-2">

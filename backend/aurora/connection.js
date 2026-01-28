@@ -16,9 +16,10 @@ const config = {
     host: process.env.RDS_PROXY_ENDPOINT || process.env.DB_HOST || 'localhost',
     port: parseInt(process.env.DB_PORT || '5432'),
     database: process.env.DB_NAME || 'portfolioview',
-    max: 1,
+    max: 20,
+    min: 2,
     idleTimeoutMillis: 120000,
-    connectionTimeoutMillis: 10000,
+    connectionTimeoutMillis: 30000,
     ssl: { rejectUnauthorized: false }
 };
 
@@ -66,8 +67,8 @@ const getDbCredentials = async () => {
         console.error('❌ Failed to fetch DB credentials:', error.message);
         console.warn('⚠️ Falling back to environment variables for DB credentials');
         dbCredentials = {
-            username: process.env.DB_USER || 'portfolio_admin',
-            password: process.env.DB_PASSWORD || ''
+            username: process.env.DB_USER,
+            password: process.env.DB_PASSWORD
         };
         return dbCredentials;
     }

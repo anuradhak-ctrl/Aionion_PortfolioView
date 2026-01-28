@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { useAuth } from './AuthContext';
 import apiClient from '@/lib/apiClient';
 import { Loader2 } from "lucide-react";
+import { mockPortfolioData, mockRecentTransactions } from '@/utils/mockData';
 
 interface ClientData {
     portfolio: any[];
@@ -18,6 +19,8 @@ interface ClientDataContextType {
 }
 
 const ClientDataContext = createContext<ClientDataContextType | undefined>(undefined);
+
+const USE_LOCAL_AUTH = import.meta.env.VITE_USE_LOCAL_AUTH === 'true';
 
 export const useClientData = () => {
     const context = useContext(ClientDataContext);
@@ -47,6 +50,41 @@ export const ClientDataProvider: React.FC<{ children: ReactNode }> = ({ children
         if (retryCount === 0) setIsLoading(true);
 
         try {
+            if (USE_LOCAL_AUTH) {
+                // Use mock data for local development
+                console.log('🔓 Client Data Context: Using mock portfolio data');
+
+                const mockHoldings = [
+                    { symbol: 'RELIANCE', name: 'Reliance Industries', isin: 'INE002A01018', poaQty: 50, nonPoaQty: 0, sector: 'Energy', qty: 50, cmp: 2500, value: 125000, pl: 15000, qtyAvailable: 50, qtyDiscrepant: 0, qtyLongTerm: 50, qtyPledgedMargin: 0, qtyPledgedLoan: 0, avgPrice: '2200.00', prevClosing: '2480.00', unrealizedPL: '15000.00', unrealizedPLPercent: '13.64', type: 'Equity' },
+                    { symbol: 'TCS', name: 'Tata Consultancy Services', isin: 'INE467B01029', poaQty: 30, nonPoaQty: 0, sector: 'IT', qty: 30, cmp: 3400, value: 102000, pl: 12000, qtyAvailable: 30, qtyDiscrepant: 0, qtyLongTerm: 30, qtyPledgedMargin: 0, qtyPledgedLoan: 0, avgPrice: '3000.00', prevClosing: '3380.00', unrealizedPL: '12000.00', unrealizedPLPercent: '13.33', type: 'Equity' },
+                    { symbol: 'INFY', name: 'Infosys Ltd', isin: 'INE009A01021', poaQty: 40, nonPoaQty: 0, sector: 'IT', qty: 40, cmp: 1450, value: 58000, pl: 8000, qtyAvailable: 40, qtyDiscrepant: 0, qtyLongTerm: 40, qtyPledgedMargin: 0, qtyPledgedLoan: 0, avgPrice: '1250.00', prevClosing: '1440.00', unrealizedPL: '8000.00', unrealizedPLPercent: '16.00', type: 'Equity' },
+                ];
+
+                const mockLedgerData = mockRecentTransactions.map((txn, idx) => ({
+                    particulars: `${txn.type} - ${txn.asset}`,
+                    postingDate: txn.date,
+                    costCenter: 'Portfolio',
+                    voucherType: txn.type,
+                    voucherNo: `VCH-${1000 + idx}`,
+                    debit: txn.type === 'BUY' ? txn.amount : 0,
+                    credit: txn.type === 'SELL' ? txn.amount : 0,
+                    netBalance: 4550000 - (idx * 50000),
+                    asset: 'Equity'
+                }));
+
+                setData({
+                    portfolio: mockHoldings,
+                    holdings: mockHoldings,
+                    ledger: mockLedgerData,
+                    clientCode: user.username || 'CL0001',
+                    isDataLoaded: true
+                });
+
+                console.log("✅ Client Data Context: Mock data loaded");
+                setIsLoading(false);
+                return;
+            }
+
             console.log(`🔄 Global Hydration: Fetching Client Data (Attempt ${retryCount + 1})...`);
 
             // Using apiClient ensures idToken (with user identity) is used

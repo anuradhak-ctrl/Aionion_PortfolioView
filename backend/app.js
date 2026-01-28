@@ -8,6 +8,8 @@ import userRoutes from './routes/user.routes.js';
 import localAuthRoutes from './routes/local-auth.routes.js';
 import cognitoAuthRoutes from './routes/cognito.auth.routes.js';
 import adminRoutes from './routes/admin.routes.js';
+import operationsRoutes from './routes/operations.routes.js';
+
 
 // Initialize express app
 const app = express();
@@ -52,12 +54,15 @@ app.get('/health', (req, res) => {
 // API routes
 app.use('/api/users', userRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/operations', operationsRoutes);
+
 
 // Auth Routes Configuration
 if (process.env.USE_LOCAL_AUTH === 'true') {
   // Use Local/Dummy Auth
   app.use('/api/auth', localAuthRoutes);
-  console.log('🔓 Local auth enabled - mounted at /api/auth');
+  app.use('/api/local-auth', localAuthRoutes); // Also mount at /api/local-auth for frontend compatibility
+  console.log('🔓 Local auth enabled - mounted at /api/auth and /api/local-auth');
   console.log('📧 Test accounts: client@test.com, rm@test.com, bm@test.com, etc.');
   console.log('🔑 Password for all: test123');
 } else {
@@ -79,6 +84,8 @@ app.get('/prod/health', (req, res) => {
 app.use('/prod/api/users', userRoutes);
 app.use('/prod/api/auth', cognitoAuthRoutes);
 app.use('/prod/api/admin', adminRoutes);
+app.use('/prod/api/operations', operationsRoutes);
+
 
 // 404 handler
 app.use((req, res) => {

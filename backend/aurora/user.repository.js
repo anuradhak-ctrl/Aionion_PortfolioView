@@ -6,6 +6,7 @@
  */
 
 import { query, queryRows, queryOne } from './connection.js';
+import hierarchyValidation from '../services/hierarchy-validation.service.js';
 
 // ==================== READ OPERATIONS ====================
 
@@ -158,6 +159,14 @@ export const create = async (userData) => {
         user_type  // Explicit user type
     } = userData;
 
+    // VALIDATE HIERARCHY BEFORE CREATING
+    if (parent_id) {
+        const validation = await hierarchyValidation.validateParentAssignment(null, parent_id, role);
+        if (!validation.valid) {
+            throw new Error(`Hierarchy validation failed: ${validation.errors.join('; ')}`);
+        }
+    }
+
     // Derive user_type if not provided
     const derivedUserType = user_type || (role === 'client' ? 'client' : 'internal');
 
@@ -196,6 +205,25 @@ export const update = async (userId, updates) => {
         'branch_id', 'zone_id', 'parent_id',
         'client_code', 'employee_code', 'mfa_enabled', 'mfa_verified'
     ];
+
+    // VALIDATE HIERARCHY IF UPDATING PARENT OR ROLE
+    if (updates.parent_id !== undefined || updates.role) {
+        // Get current user to check role
+        const currentUser = await queryOne('SELECT id, role FROM users WHERE id = $1', [userId]);
+        if (!currentUser) {
+            throw new Error('User not found');
+        }
+
+        const newParentId = updates.parent_id !== undefined ? updates.parent_id : currentUser.parent_id;
+        const newRole = updates.role || currentUser.role;
+
+        if (newParentId) {
+            const validation = await hierarchyValidation.validateParentAssignment(userId, newParentId, newRole);
+            if (!validation.valid) {
+                throw new Error(`Hierarchy validation failed: ${validation.errors.join('; ')}`);
+            }
+        }
+    }
 
     const setClauses = [];
     const params = [];

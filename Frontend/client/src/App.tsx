@@ -58,6 +58,9 @@ import AdminProfile from "@/pages/admin/AdminProfile";
 import UnderDevelopment from "@/components/UnderDevelopment";
 
 import RoleHierarchy from "@/pages/admin/RoleHierarchy";
+import OperationsDashboard from "@/pages/OperationsDashboard";
+import OperationsLogin from "@/pages/OperationsLogin";
+
 
 function Redirect({ to }: { to?: string }) {
   const [, setLocation] = useLocation();
@@ -97,6 +100,10 @@ function Router() {
     <Switch>
       <Route path="/login" component={Login} />
       <Route path="/change-password" component={ChangePassword} />
+
+      {/* Standalone Operations Portal */}
+      <Route path="/operations-login" component={OperationsLogin} />
+      <Route path="/operations-dashboard" component={OperationsDashboard} />
       <Route path="/">
         <ProtectedRoute>
           <Redirect />
@@ -299,6 +306,8 @@ function Router() {
           <AdminProfile />
         </ProtectedRoute>
       </Route>
+
+
 
       {/* Under Development Page */}
       <Route path="/under-development">

@@ -1,0 +1,6 @@
+client_id,AMC Name,Scheme Name,Scheme Code,Folio No,Scheme Category,Units,Avg Cost (₹),Invested Amount (₹),Current NAV (₹),NAV Date,Current Value (₹),Unrealized P&L (₹),Unrealized P&L %
+CLI001,HDFC,HDFC Equity Fund - Growth,12345,12345/12,Equity Cap,250,123.5,30875.00,165.2,2024-01-15,41300.00,10425.00,37.90%
+CLI001,SBI,SBI Short Duration Fund - Growth,24680,SN/12,Short Duration,500,88.1,44050.00,102.35,2024-01-15,51175.00,7125.00,16.18%
+CLI002,ICICI,ICICI Prudential Balanced Advantage,34567,IC/34,Balanced Advantage,100,218,21800.00,239.4,2024-01-15,23940.00,2140.00,9.82%
+CLI002,Axis,Axis Bluechip Fund - Growth,45678,AX/45,Large Cap,300,156.8,47040.00,178.5,2024-01-15,53550.00,6510.00,13.84%
+CLI003,Kotak,Kotak Emerging Equity - Growth,56789,KO/56,Mid Cap,150,245.2,36780.00,289.7,2024-01-15,43455.00,6675.00,18.15%

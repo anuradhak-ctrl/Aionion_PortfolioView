@@ -255,7 +255,7 @@ class AuthService {
 
   private handleSuccessfulAuth(data: AuthResponse) {
     const tokens = data.tokens || {
-      idToken: data.idToken!,
+      idToken: data.idToken || data.token!,  // Use token for local auth
       accessToken: data.accessToken || data.token!,
       refreshToken: data.refreshToken || data.token!
     };

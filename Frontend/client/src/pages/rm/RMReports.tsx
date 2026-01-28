@@ -3,7 +3,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { getPortfolioData, getLedgerData, refreshPortfolioData } from "@/services/portfolioService";
 import userService, { Client } from "@/services/userService";
-import { Loader2, ChevronDown, Download } from "lucide-react";
+import { Loader2, ChevronDown, Download, Printer, FileText, Image as ImageIcon } from "lucide-react";
+import { useLocation } from "wouter";
 
 // --- Types ---
 type Tab = "Holdings" | "Ledger";
@@ -12,7 +13,7 @@ type Tab = "Holdings" | "Ledger";
 const TabButton = ({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) => (
     <button
         onClick={onClick}
-        className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 ${active
+        className={`px-5 py-2 rounded-xl text-sm font-semibold transition-all duration-200 print:hidden ${active
             ? "bg-primary text-primary-foreground shadow-lg"
             : "bg-background text-muted-foreground border border-border hover:bg-muted hover:text-foreground"
             }`}
@@ -21,11 +22,17 @@ const TabButton = ({ active, onClick, children }: { active: boolean; onClick: ()
     </button>
 );
 
+// --- Icons ---
+const DownloadIcon = ({ className = "w-4 h-4" }: { className?: string }) => (
+    <Download className={className} />
+);
+
 // --- Tab Content Components ---
 const HoldingsTab = ({ clientId }: { clientId: string }) => {
     const [portfolioData, setPortfolioData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
+    const [isDownloadDropdownOpen, setIsDownloadDropdownOpen] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -68,7 +75,7 @@ const HoldingsTab = ({ clientId }: { clientId: string }) => {
 
     const holdings = portfolioData?.data || [];
 
-    const handleDownload = () => {
+    const handleDownloadCSV = () => {
         const headers = ["Security", "ISIN", "Quantity", "Average Price", "Current Price", "Value", "P&L", "Return %"];
         const csvContent = [
             headers.join(","),
@@ -91,6 +98,12 @@ const HoldingsTab = ({ clientId }: { clientId: string }) => {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+        setIsDownloadDropdownOpen(false);
+    };
+
+    const handlePrint = () => {
+        window.print();
+        setIsDownloadDropdownOpen(false);
     };
 
     if (loading) {
@@ -119,55 +132,80 @@ const HoldingsTab = ({ clientId }: { clientId: string }) => {
     }
 
     return (
-        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden">
+        <div className="bg-card rounded-2xl border border-border/50 shadow-sm overflow-hidden" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
             {/* Header Section */}
             <div className="p-4 md:p-6 pb-4 bg-background/50">
                 <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-                    <h2 className="text-lg md:text-xl font-bold text-foreground">Holdings Report</h2>
-                    <button
-                        onClick={handleDownload}
-                        className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
-                    >
-                        <Download className="w-3 h-3 md:w-4 md:h-4" />
-                        <span className="leading-none">Export</span>
-                    </button>
+                    <h2 className="text-lg md:text-xl font-bold text-foreground print:text-black">Holdings Report</h2>
+                    <div className="relative print:hidden">
+                        <button
+                            onClick={() => setIsDownloadDropdownOpen(!isDownloadDropdownOpen)}
+                            className="flex items-center justify-center gap-1.5 md:gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-emerald-500 hover:bg-emerald-600 rounded-lg text-xs md:text-sm font-bold text-white shadow-lg shadow-emerald-500/20 transition-all whitespace-nowrap"
+                        >
+                            <DownloadIcon className="w-3 h-3 md:w-4 md:h-4" />
+                            <span className="leading-none">Download</span>
+                            <ChevronDown className={`w-3 h-3 md:w-4 md:h-4 transition-transform ${isDownloadDropdownOpen ? 'rotate-180' : ''}`} />
+                        </button>
+
+                        {isDownloadDropdownOpen && (
+                            <>
+                                <div className="fixed inset-0 z-10" onClick={() => setIsDownloadDropdownOpen(false)} />
+                                <div className="absolute right-0 mt-2 w-48 bg-card border border-border rounded-xl shadow-xl z-20 py-1">
+                                    <button
+                                        onClick={handlePrint}
+                                        className="flex items-center w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                                    >
+                                        <Printer className="w-4 h-4 mr-2 text-muted-foreground" />
+                                        Print / Save as PDF
+                                    </button>
+                                    <button
+                                        onClick={handleDownloadCSV}
+                                        className="flex items-center w-full px-4 py-2.5 text-sm text-foreground hover:bg-muted transition-colors text-left"
+                                    >
+                                        <FileText className="w-4 h-4 mr-2 text-muted-foreground" />
+                                        Export as CSV
+                                    </button>
+                                </div>
+                            </>
+                        )}
+                    </div>
                 </div>
             </div>
 
             {/* Table Section */}
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto print:overflow-visible">
                 <table className="w-full text-left border-collapse">
                     <thead>
-                        <tr className="border-t border-b border-border">
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50" style={{ minWidth: '200px' }}>Security</th>
-                            <th className="py-5 px-6 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">ISIN</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Quantity</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Average Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Current Price</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Value</th>
-                            <th className="py-5 px-6 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Unrealized P&L</th>
-                            <th className="py-5 px-6 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50">Return %</th>
+                        <tr className="border-t border-b border-border print:border-gray-300">
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black" style={{ minWidth: '100px' }}>Security</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">ISIN</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Quantity</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Average Price</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Current Price</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Value</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Unrealized P&L</th>
+                            <th className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-semibold text-xs whitespace-nowrap bg-background/50 print:bg-gray-100 print:text-[10px] print:text-black">Return %</th>
                         </tr>
                     </thead>
-                    <tbody className="divide-y divide-border text-sm">
+                    <tbody className="divide-y divide-border text-sm print:divide-gray-300">
                         {holdings.map((h: any, i: number) => (
                             <tr key={i} className="hover:bg-muted/30 transition-colors">
-                                <td className="py-5 px-6 whitespace-nowrap">
+                                <td className="py-5 px-6 print:py-2 print:px-2 whitespace-nowrap">
                                     <div className="flex flex-col">
-                                        <span className="font-bold text-foreground text-base">{h.security}</span>
-                                        {h.sector && <span className="text-xs text-muted-foreground font-medium mt-0.5">{h.sector}</span>}
+                                        <span className="font-bold text-foreground text-base print:text-[11px] print:text-black">{h.security}</span>
+                                        {h.sector && <span className="text-xs text-muted-foreground font-medium mt-0.5 print:text-[9px] print:text-gray-600">{h.sector}</span>}
                                     </div>
                                 </td>
-                                <td className="py-5 px-6 text-xs text-muted-foreground font-medium whitespace-nowrap">{h.isin || "-"}</td>
-                                <td className="py-5 px-6 text-center text-muted-foreground font-medium whitespace-nowrap">{h.qty}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">₹{h.avgPrice}</td>
-                                <td className="py-5 px-6 text-right text-muted-foreground font-medium whitespace-nowrap">₹{h.cmp}</td>
-                                <td className="py-5 px-6 text-right text-foreground font-bold whitespace-nowrap">₹{h.value}</td>
-                                <td className={`py-5 px-6 text-right font-bold text-base whitespace-nowrap ${parseFloat(h.pl) >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+                                <td className="py-5 px-6 print:py-2 print:px-2 text-xs text-muted-foreground font-medium whitespace-nowrap print:text-[10px] print:text-gray-600">{h.isin || "-"}</td>
+                                <td className="py-5 px-6 print:py-2 print:px-2 text-center text-muted-foreground font-medium whitespace-nowrap print:text-[10px] print:text-gray-600">{h.qty}</td>
+                                <td className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-medium whitespace-nowrap print:text-[10px] print:text-gray-600">₹{h.avgPrice}</td>
+                                <td className="py-5 px-6 print:py-2 print:px-2 text-right text-muted-foreground font-medium whitespace-nowrap print:text-[10px] print:text-gray-600">₹{h.cmp}</td>
+                                <td className="py-5 px-6 print:py-2 print:px-2 text-right text-foreground font-bold whitespace-nowrap print:text-[10px] print:text-black">₹{h.value}</td>
+                                <td className={`py-5 px-6 print:py-2 print:px-2 text-right font-bold text-base whitespace-nowrap ${parseFloat(h.pl) >= 0 ? 'text-emerald-500' : 'text-red-500'} print:text-[10px] print:text-black`}>
                                     ₹{h.pl}
                                 </td>
-                                <td className="py-5 px-6 text-center whitespace-nowrap">
-                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${h.return?.startsWith('-') ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'}`}>
+                                <td className="py-5 px-6 print:py-2 print:px-2 text-center whitespace-nowrap">
+                                    <span className={`inline-flex items-center px-2.5 py-1 rounded-md text-xs font-semibold ${h.return?.startsWith('-') ? 'bg-red-500/10 text-red-500' : 'bg-emerald-500/10 text-emerald-500'} print:bg-gray-100 print:text-[9px] print:text-black print:border print:border-gray-200`}>
                                         {h.return}
                                     </span>
                                 </td>
@@ -317,11 +355,30 @@ export default function RMReports() {
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [clients, setClients] = useState<Client[]>([]);
     const [loading, setLoading] = useState(true);
+    const [location] = useLocation();
 
     useEffect(() => {
         setLoading(true);
         userService.getClients()
-            .then(setClients)
+            .then(data => {
+                setClients(data);
+
+                // Parse query params for clientCode redirect
+                const params = new URLSearchParams(window.location.search);
+                const clientCode = params.get('clientCode');
+
+                if (clientCode) {
+                    // Try to find client by ID or Client ID
+                    const matchedClient = data.find(c =>
+                        c.client_id === clientCode ||
+                        c.id.toString() === clientCode
+                    );
+
+                    if (matchedClient) {
+                        setSelectedClient(matchedClient.client_id || matchedClient.id.toString());
+                    }
+                }
+            })
             .catch(err => console.error("Failed to fetch clients:", err))
             .finally(() => setLoading(false));
     }, []);
@@ -331,12 +388,19 @@ export default function RMReports() {
     return (
         <DashboardLayout role="rm">
             <div className="max-w-7xl mx-auto w-full p-8 min-h-screen">
-                <div className="flex items-center justify-between mb-8">
+                {/* Print Header (Visible only in print) */}
+                <div className="hidden print:block mb-8 border-b pb-4">
+                    <img src="/logo.png" alt="Company Logo" className="h-12 w-auto mb-4" />
+                    <h1 className="text-2xl font-bold text-black">Aionion Investment Services</h1>
+                    <p className="text-sm text-gray-600">Client Report</p>
+                </div>
+
+                <div className="flex items-center justify-between mb-8 print:hidden">
                     <h1 className="text-4xl font-display font-bold text-foreground">Reports</h1>
                 </div>
 
-                {/* Client Selector Card */}
-                <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-6 mb-8">
+                {/* Client Selector Card - Hidden on Print */}
+                <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-6 mb-8 print:hidden">
                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                         <div>
                             <h2 className="text-lg font-bold text-foreground mb-1">Select Client</h2>
@@ -382,21 +446,23 @@ export default function RMReports() {
                 {selectedClient ? (
                     <>
                         {/* Selected Client Info */}
-                        <div className="flex items-center justify-between mb-6">
+                        <div className="flex items-center justify-between mb-6 print:mb-8">
                             <div>
-                                <h2 className="text-2xl font-bold text-foreground">{selectedClientData?.name}</h2>
-                                <p className="text-sm text-muted-foreground">Client ID: {selectedClient} • Status: {selectedClientData?.status || 'Unknown'}</p>
+                                <h2 className="text-2xl font-bold text-foreground print:text-black">{selectedClientData?.name}</h2>
+                                <p className="text-sm text-muted-foreground print:text-gray-600">Client ID: {selectedClient} • Status: {selectedClientData?.status || 'Unknown'}</p>
+                                {/* Additional info for print */}
+                                <p className="hidden print:block text-sm text-gray-600 mt-1">Generated on: {new Date().toLocaleDateString()}</p>
                             </div>
                             <button
                                 onClick={() => setSelectedClient(null)}
-                                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
+                                className="px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors print:hidden"
                             >
                                 ← Change Client
                             </button>
                         </div>
 
-                        {/* Tab Navigation */}
-                        <div className="flex overflow-x-auto gap-3 mb-8 pb-2 no-scrollbar">
+                        {/* Tab Navigation - Hidden on Print */}
+                        <div className="flex overflow-x-auto gap-3 mb-8 pb-2 no-scrollbar print:hidden">
                             {(["Holdings", "Ledger"] as Tab[]).map((tab) => (
                                 <div key={tab} className="shrink-0">
                                     <TabButton active={activeTab === tab} onClick={() => setActiveTab(tab)}>
@@ -423,7 +489,7 @@ export default function RMReports() {
                         </div>
                     </>
                 ) : (
-                    <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-12 text-center">
+                    <div className="bg-card rounded-2xl border border-border/50 shadow-sm p-12 text-center print:hidden">
                         <div className="w-16 h-16 mx-auto mb-4 bg-muted rounded-full flex items-center justify-center">
                             <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-8 h-8 text-muted-foreground">
                                 <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>

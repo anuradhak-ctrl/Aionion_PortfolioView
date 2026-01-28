@@ -31,6 +31,107 @@ router.get(
   userController.getClients
 );
 
+/**
+ * GET /api/users/me/subordinates
+ * Get all subordinates of the current user (with mock data for development)
+ */
+router.get('/me/subordinates', authGuard, async (req, res) => {
+  try {
+    const userRole = req.user?.role;
+
+    // Mock data for development - returns hierarchical data based on user role
+    const mockSubordinates = [];
+
+    // For ZM: return BMs, RMs, and Clients
+    if (userRole === 'zonal_head' || userRole === 'zh') {
+      // 2 Branch Managers
+      mockSubordinates.push(
+        { id: 101, client_id: 'BM001', name: 'Arun Sharma', email: 'arun.sharma@example.com', role: 'branch_manager', status: 'active', parent_id: null },
+        { id: 102, client_id: 'BM002', name: 'Deepika Menon', email: 'deepika.menon@example.com', role: 'branch_manager', status: 'active', parent_id: null }
+      );
+
+      // 2 RMs under each BM
+      mockSubordinates.push(
+        { id: 201, client_id: 'RM001', name: 'Vikram Singh', email: 'vikram.singh@example.com', role: 'rm', status: 'active', parent_id: 101 },
+        { id: 202, client_id: 'RM002', name: 'Anita Desai', email: 'anita.desai@example.com', role: 'rm', status: 'active', parent_id: 101 },
+        { id: 203, client_id: 'RM003', name: 'Suresh Rao', email: 'suresh.rao@example.com', role: 'rm', status: 'active', parent_id: 102 },
+        { id: 204, client_id: 'RM004', name: 'Meera Joshi', email: 'meera.joshi@example.com', role: 'rm', status: 'active', parent_id: 102 }
+      );
+
+      // 3 Clients under each RM
+      const clientData = [
+        { id: 301, client_id: 'CL0001', name: 'Aarav Sharma', email: 'aarav.sharma@client.com', parent_id: 201 },
+        { id: 302, client_id: 'CL0002', name: 'Aditi Patel', email: 'aditi.patel@client.com', parent_id: 201 },
+        { id: 303, client_id: 'CL0003', name: 'Arjun Kumar', email: 'arjun.kumar@client.com', parent_id: 201 },
+        { id: 304, client_id: 'CL0004', name: 'Diya Reddy', email: 'diya.reddy@client.com', parent_id: 202 },
+        { id: 305, client_id: 'CL0005', name: 'Ishaan Verma', email: 'ishaan.verma@client.com', parent_id: 202 },
+        { id: 306, client_id: 'CL0006', name: 'Kiara Nair', email: 'kiara.nair@client.com', parent_id: 202 },
+        { id: 307, client_id: 'CL0007', name: 'Navya Iyer', email: 'navya.iyer@client.com', parent_id: 203 },
+        { id: 308, client_id: 'CL0008', name: 'Reyansh Gupta', email: 'reyansh.gupta@client.com', parent_id: 203 },
+        { id: 309, client_id: 'CL0009', name: 'Sara Mehta', email: 'sara.mehta@client.com', parent_id: 203 },
+        { id: 310, client_id: 'CL0010', name: 'Vihaan Shah', email: 'vihaan.shah@client.com', parent_id: 204 },
+        { id: 311, client_id: 'CL0011', name: 'Aanya Chopra', email: 'aanya.chopra@client.com', parent_id: 204 },
+        { id: 312, client_id: 'CL0012', name: 'Kabir Malhotra', email: 'kabir.malhotra@client.com', parent_id: 204 }
+      ];
+
+      clientData.forEach(client => {
+        mockSubordinates.push({ ...client, role: 'client', status: 'active' });
+      });
+    }
+
+    // For BM: return RMs and Clients
+    else if (userRole === 'branch_manager' || userRole === 'bm') {
+      // 2 RMs
+      mockSubordinates.push(
+        { id: 201, client_id: 'RM001', name: 'Vikram Singh', email: 'vikram.singh@example.com', role: 'rm', status: 'active', parent_id: null },
+        { id: 202, client_id: 'RM002', name: 'Anita Desai', email: 'anita.desai@example.com', role: 'rm', status: 'active', parent_id: null }
+      );
+
+      // 3 Clients under each RM
+      const clientData = [
+        { id: 301, client_id: 'CL0001', name: 'Aarav Sharma', email: 'aarav.sharma@client.com', parent_id: 201 },
+        { id: 302, client_id: 'CL0002', name: 'Aditi Patel', email: 'aditi.patel@client.com', parent_id: 201 },
+        { id: 303, client_id: 'CL0003', name: 'Arjun Kumar', email: 'arjun.kumar@client.com', parent_id: 201 },
+        { id: 304, client_id: 'CL0004', name: 'Diya Reddy', email: 'diya.reddy@client.com', parent_id: 202 },
+        { id: 305, client_id: 'CL0005', name: 'Ishaan Verma', email: 'ishaan.verma@client.com', parent_id: 202 },
+        { id: 306, client_id: 'CL0006', name: 'Kiara Nair', email: 'kiara.nair@client.com', parent_id: 202 }
+      ];
+
+      clientData.forEach(client => {
+        mockSubordinates.push({ ...client, role: 'client', status: 'active' });
+      });
+    }
+
+    // For RM: return Clients only
+    else if (userRole === 'rm' || userRole === 'relationship_manager') {
+      const clientData = [
+        { id: 301, client_id: 'CL0001', name: 'Aarav Sharma', email: 'aarav.sharma@client.com' },
+        { id: 302, client_id: 'CL0002', name: 'Aditi Patel', email: 'aditi.patel@client.com' },
+        { id: 303, client_id: 'CL0003', name: 'Arjun Kumar', email: 'arjun.kumar@client.com' },
+        { id: 304, client_id: 'CL0004', name: 'Diya Reddy', email: 'diya.reddy@client.com' },
+        { id: 305, client_id: 'CL0005', name: 'Ishaan Verma', email: 'ishaan.verma@client.com' },
+        { id: 306, client_id: 'CL0006', name: 'Kiara Nair', email: 'kiara.nair@client.com' }
+      ];
+
+      clientData.forEach(client => {
+        mockSubordinates.push({ ...client, role: 'client', status: 'active', parent_id: null });
+      });
+    }
+
+    res.json({
+      success: true,
+      data: mockSubordinates,
+      count: mockSubordinates.length
+    });
+  } catch (error) {
+    console.error('❌ Get /me/subordinates error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch subordinates'
+    });
+  }
+});
+
 // ==================== AURORA HIERARCHY ROUTES ====================
 
 /**

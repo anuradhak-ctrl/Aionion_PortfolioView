@@ -18,21 +18,15 @@ app.listen(PORT, () => {
   connectKambala().catch(err => console.error('⚠️ Kambala pre-warm failed:', err));
 });
 
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled Promise Rejection:', err);
-  // Close server & exit process
-  process.exit(1);
-});
-
-import redisClient from './services/redis.service.js';
+// TEMPORARILY DISABLED - Redis not running locally
+// import redisClient from './services/redis.service.js';
 
 // Handle SIGTERM and SIGINT for graceful shutdown
 const gracefulShutdown = () => {
   console.log('🛑 Shutting down server...');
-  redisClient.quit().finally(() => {
-    process.exit(0);
-  });
+  // redisClient.quit().finally(() => {
+  process.exit(0);
+  // });
 };
 
 process.on('SIGTERM', gracefulShutdown);
